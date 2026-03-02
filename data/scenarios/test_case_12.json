@@ -1,0 +1,63 @@
+{
+  "id": "1770380293650",
+  "name": "Imported Test 12",
+  "you_id": "tAfTcCukQN",
+  "expectation": {
+    "kind": "exact",
+    "direction": "left"
+  },
+  "board": {
+    "width": 20,
+    "height": 20,
+    "food": [
+      {
+        "x": 8,
+        "y": 13
+      },
+      {
+        "x": 10,
+        "y": 17
+      }
+    ],
+    "snakes": [
+      {
+        "id": "9k7U44NhHN",
+        "name": "TlKaRTpKaT",
+        "body": [
+          {
+            "x": 8,
+            "y": 8
+          },
+          {
+            "x": 7,
+            "y": 8
+          },
+          {
+            "x": 7,
+            "y": 8
+          }
+        ],
+        "health": 100
+      },
+      {
+        "id": "tAfTcCukQN",
+        "name": "yhuxD0LQ8w",
+        "body": [
+          {
+            "x": 7,
+            "y": 9
+          },
+          {
+            "x": 7,
+            "y": 10
+          },
+          {
+            "x": 7,
+            "y": 10
+          }
+        ],
+        "health": 100
+      }
+    ]
+  }
+}
