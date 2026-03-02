@@ -1,0 +1,9 @@
+[package]
+name = "snake-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+snake-domain = { version = "0.1.0", path = "../snake-domain" }

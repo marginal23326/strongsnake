@@ -1,0 +1,54 @@
+{
+  "id": "1770380308774",
+  "name": "Imported Test 34",
+  "you_id": "us",
+  "expectation": {
+    "kind": "exact",
+    "direction": "left"
+  },
+  "board": {
+    "width": 11,
+    "height": 11,
+    "food": [],
+    "snakes": [
+      {
+        "id": "us",
+        "name": "us",
+        "body": [
+          {
+            "x": 5,
+            "y": 5
+          },
+          {
+            "x": 5,
+            "y": 6
+          },
+          {
+            "x": 4,
+            "y": 6
+          }
+        ],
+        "health": 99
+      },
+      {
+        "id": "them",
+        "name": "them",
+        "body": [
+          {
+            "x": 6,
+            "y": 4
+          },
+          {
+            "x": 7,
+            "y": 4
+          },
+          {
+            "x": 7,
+            "y": 3
+          }
+        ],
+        "health": 99
+      }
+    ]
+  }
+}

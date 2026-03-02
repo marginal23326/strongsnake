@@ -1,0 +1,35 @@
+{
+  "id": "1770380308552",
+  "name": "Imported Test 23",
+  "you_id": "you",
+  "expectation": {
+    "kind": "exact",
+    "direction": "down"
+  },
+  "board": {
+    "width": 11,
+    "height": 11,
+    "food": [],
+    "snakes": [
+      {
+        "id": "you",
+        "name": "you",
+        "body": [
+          {
+            "x": 0,
+            "y": 10
+          },
+          {
+            "x": 1,
+            "y": 10
+          },
+          {
+            "x": 2,
+            "y": 10
+          }
+        ],
+        "health": 100
+      }
+    ]
+  }
+}

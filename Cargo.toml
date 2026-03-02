@@ -1,0 +1,57 @@
+[package]
+name = "snake-app"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace]
+members = [
+    "crates/snake-domain",
+    "crates/snake-ai",
+    "crates/snake-io",
+    "crates/snake-api",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1.0.102"
+axum = { version = "0.8.8", default-features = false, features = ["http1", "json", "tokio", "tracing"] }
+clap = { version = "4.5.60", features = ["derive"] }
+eframe = { version = "0.33.3", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
+egui_plot = "0.34.1"
+rand = "0.10.0"
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+snake-ai = { version = "0.1.0", path = "crates/snake-ai" }
+snake-api = { version = "0.1.0", path = "crates/snake-api" }
+snake-domain = { version = "0.1.0", path = "crates/snake-domain" }
+snake-io = { version = "0.1.0", path = "crates/snake-io" }
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "net", "sync", "time"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", default-features = false, features = ["ansi", "env-filter", "fmt"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+debug = 1
+incremental = false
+
+[profile.dev.package."*"]
+debug = 0
+
+[profile.test]
+debug = 1
+incremental = false
+
+[profile.test.package."*"]
+debug = 0

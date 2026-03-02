@@ -1,0 +1,66 @@
+{
+  "id": "1770380308842",
+  "name": "Imported Test 38",
+  "you_id": "us",
+  "expectation": {
+    "kind": "exact",
+    "direction": "down"
+  },
+  "board": {
+    "width": 11,
+    "height": 11,
+    "food": [],
+    "snakes": [
+      {
+        "id": "us",
+        "name": "us",
+        "body": [
+          {
+            "x": 5,
+            "y": 5
+          },
+          {
+            "x": 5,
+            "y": 6
+          },
+          {
+            "x": 5,
+            "y": 7
+          },
+          {
+            "x": 6,
+            "y": 7
+          },
+          {
+            "x": 7,
+            "y": 7
+          }
+        ],
+        "health": 77
+      },
+      {
+        "id": "them",
+        "name": "them",
+        "body": [
+          {
+            "x": 5,
+            "y": 3
+          },
+          {
+            "x": 5,
+            "y": 2
+          },
+          {
+            "x": 5,
+            "y": 1
+          },
+          {
+            "x": 4,
+            "y": 1
+          }
+        ],
+        "health": 88
+      }
+    ]
+  }
+}
