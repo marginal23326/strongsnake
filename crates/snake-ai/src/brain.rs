@@ -107,16 +107,20 @@ fn prepare_tt_for_search(cfg: &AiConfig) {
 #[inline]
 fn accumulate_perf_stats(total: &mut crate::PerfStats, stats: &crate::PerfStats) {
     total.negamax_calls += stats.negamax_calls;
-    total.eval_calls += stats.eval_calls;
-    total.eval_duration += stats.eval_duration;
-    total.voronoi_calls += stats.voronoi_calls;
-    total.voronoi_duration += stats.voronoi_duration;
-    total.floodfill_calls += stats.floodfill_calls;
-    total.floodfill_duration += stats.floodfill_duration;
-    total.move_gen_calls += stats.move_gen_calls;
-    total.move_gen_duration += stats.move_gen_duration;
-    total.distmap_calls += stats.distmap_calls;
-    total.distmap_duration += stats.distmap_duration;
+
+    #[cfg(feature = "profiling")]
+    {
+        total.eval_calls += stats.eval_calls;
+        total.eval_duration += stats.eval_duration;
+        total.voronoi_calls += stats.voronoi_calls;
+        total.voronoi_duration += stats.voronoi_duration;
+        total.floodfill_calls += stats.floodfill_calls;
+        total.floodfill_duration += stats.floodfill_duration;
+        total.move_gen_calls += stats.move_gen_calls;
+        total.move_gen_duration += stats.move_gen_duration;
+        total.distmap_calls += stats.distmap_calls;
+        total.distmap_duration += stats.distmap_duration;
+    }
 }
 
 #[derive(Clone)]
@@ -396,7 +400,7 @@ where
     let started = Instant::now();
     let grid = Grid::<N>::from_state(cols, rows, &foods, &me.body, &enemy.body);
     let dist_map = Arc::<[i16]>::from(get_food_distance_map(&grid));
-    
+
     let pre_worker_stats = crate::PERF_STATS.with(|s| *s.borrow());
 
     let grid_size = (cols * rows) as usize;
@@ -461,11 +465,15 @@ where
             println!("PROFILING:");
             println!("Total time: {}", format_duration_ns(elapsed.as_nanos()));
             println!("Nodes ({} Threads): {} ({} NPS)", num_threads, st.negamax_calls, nps);
-            println!("Eval: {:>8} calls, {:?}", st.eval_calls, st.eval_duration);
-            println!("Voronoi: {:>8} calls, {:?}", st.voronoi_calls, st.voronoi_duration);
-            println!("Floodfill: {:>8} calls, {:?}", st.floodfill_calls, st.floodfill_duration);
-            println!("MoveGen: {:>8} calls, {:?}", st.move_gen_calls, st.move_gen_duration);
-            println!("DistMap: {:>8} calls, {:?}", st.distmap_calls, st.distmap_duration);
+
+            #[cfg(feature = "profiling")]
+            {
+                println!("Eval: {:>8} calls, {:?}", st.eval_calls, st.eval_duration);
+                println!("Voronoi: {:>8} calls, {:?}", st.voronoi_calls, st.voronoi_duration);
+                println!("Floodfill: {:>8} calls, {:?}", st.floodfill_calls, st.floodfill_duration);
+                println!("MoveGen: {:>8} calls, {:?}", st.move_gen_calls, st.move_gen_duration);
+                println!("DistMap: {:>8} calls, {:?}", st.distmap_calls, st.distmap_duration);
+            }
             println!("======\n");
         });
     }

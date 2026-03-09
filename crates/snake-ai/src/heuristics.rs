@@ -24,14 +24,21 @@ pub fn evaluate<const N: usize>(
 where
     [(); (N + 63) / 64]: Sized,
 {
-    let start = std::time::Instant::now();
-    let res = evaluate_inner(grid, me, enemy, dist_map, cfg, buffers);
-    crate::PERF_STATS.with(|s| {
-        let mut st = s.borrow_mut();
-        st.eval_calls += 1;
-        st.eval_duration += start.elapsed();
-    });
-    res
+    #[cfg(feature = "profiling")]
+    {
+        let start = std::time::Instant::now();
+        let res = evaluate_inner(grid, me, enemy, dist_map, cfg, buffers);
+        crate::PERF_STATS.with(|s| {
+            let mut st = s.borrow_mut();
+            st.eval_calls += 1;
+            st.eval_duration += start.elapsed();
+        });
+        res
+    }
+    #[cfg(not(feature = "profiling"))]
+    {
+        evaluate_inner(grid, me, enemy, dist_map, cfg, buffers)
+    }
 }
 
 fn evaluate_inner<const N: usize>(

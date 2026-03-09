@@ -110,14 +110,21 @@ fn get_safe_neighbors<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &A
 where
     [(); (N + 63) / 64]: Sized,
 {
-    let start = std::time::Instant::now();
-    let res = get_safe_neighbors_inner(grid, me, enemy);
-    crate::PERF_STATS.with(|s| {
-        let mut st = s.borrow_mut();
-        st.move_gen_calls += 1;
-        st.move_gen_duration += start.elapsed();
-    });
-    res
+    #[cfg(feature = "profiling")]
+    {
+        let start = std::time::Instant::now();
+        let res = get_safe_neighbors_inner(grid, me, enemy);
+        crate::PERF_STATS.with(|s| {
+            let mut st = s.borrow_mut();
+            st.move_gen_calls += 1;
+            st.move_gen_duration += start.elapsed();
+        });
+        res
+    }
+    #[cfg(not(feature = "profiling"))]
+    {
+        get_safe_neighbors_inner(grid, me, enemy)
+    }
 }
 
 fn get_safe_neighbors_inner<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &AgentState) -> MoveList
@@ -441,7 +448,7 @@ where
 
             let mut min_a = 1000;
             let mut min_b = 1000;
-            
+
             let mut temp_food = grid.food;
             while let Some(idx) = temp_food.pop_first() {
                 let fx = (idx as i32) % grid.width;
@@ -510,14 +517,14 @@ where
 
         let ate_food_i32 = ate_food as i32;
         let new_health = (old_health - 1) * (1 - ate_food_i32) + (100 * ate_food_i32);
-        
+
         me.health = new_health;
         me.body.push_front(Point { x: mv.x, y: mv.y });
 
         let cell_id: i8 = 2 + side as i8;
 
-        next_hash ^= ctx.zobrist.health[side][old_health.clamp(0, 100) as usize] 
-                   ^ ctx.zobrist.health[side][new_health.clamp(0, 100) as usize];
+        next_hash ^=
+            ctx.zobrist.health[side][old_health.clamp(0, 100) as usize] ^ ctx.zobrist.health[side][new_health.clamp(0, 100) as usize];
         if original_head_val != 0 {
             unsafe {
                 next_hash = ctx.zobrist.xor_unchecked(next_hash, mv.x, mv.y, original_head_val);

@@ -18,13 +18,13 @@ impl Zobrist {
             slot[2] = splitmix64(&mut seed);
             slot[3] = splitmix64(&mut seed);
         }
-        
+
         let mut health = [[0u64; 101]; 2];
         for i in 0..=100 {
             health[0][i] = splitmix64(&mut seed);
             health[1][i] = splitmix64(&mut seed);
         }
-        
+
         Self {
             width,
             height,

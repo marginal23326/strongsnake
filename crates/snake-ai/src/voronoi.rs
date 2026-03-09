@@ -13,14 +13,21 @@ pub fn compute_voronoi<const N: usize>(grid: &Grid<N>, my_head: Point, enemy_hea
 where
     [(); (N + 63) / 64]: Sized,
 {
-    let start = std::time::Instant::now();
-    let res = compute_voronoi_inner(grid, my_head, enemy_head);
-    crate::PERF_STATS.with(|s| {
-        let mut st = s.borrow_mut();
-        st.voronoi_calls += 1;
-        st.voronoi_duration += start.elapsed();
-    });
-    res
+    #[cfg(feature = "profiling")]
+    {
+        let start = std::time::Instant::now();
+        let res = compute_voronoi_inner(grid, my_head, enemy_head);
+        crate::PERF_STATS.with(|s| {
+            let mut st = s.borrow_mut();
+            st.voronoi_calls += 1;
+            st.voronoi_duration += start.elapsed();
+        });
+        res
+    }
+    #[cfg(not(feature = "profiling"))]
+    {
+        compute_voronoi_inner(grid, my_head, enemy_head)
+    }
 }
 
 fn compute_voronoi_inner<const N: usize>(grid: &Grid<N>, my_head: Point, enemy_head: Point) -> VoronoiResult

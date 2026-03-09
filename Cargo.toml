@@ -55,3 +55,6 @@ incremental = false
 
 [profile.test.package."*"]
 debug = 0
+
+[features]
+profiling = ["snake-ai/profiling"]

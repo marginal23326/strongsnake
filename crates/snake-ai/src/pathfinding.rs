@@ -4,14 +4,21 @@ pub fn get_food_distance_map<const N: usize>(grid: &Grid<N>) -> Vec<i16>
 where
     [(); (N + 63) / 64]: Sized,
 {
-    let start = std::time::Instant::now();
-    let res = get_food_distance_map_inner(grid);
-    crate::PERF_STATS.with(|s| {
-        let mut st = s.borrow_mut();
-        st.distmap_calls += 1;
-        st.distmap_duration += start.elapsed();
-    });
-    res
+    #[cfg(feature = "profiling")]
+    {
+        let start = std::time::Instant::now();
+        let res = get_food_distance_map_inner(grid);
+        crate::PERF_STATS.with(|s| {
+            let mut st = s.borrow_mut();
+            st.distmap_calls += 1;
+            st.distmap_duration += start.elapsed();
+        });
+        res
+    }
+    #[cfg(not(feature = "profiling"))]
+    {
+        get_food_distance_map_inner(grid)
+    }
 }
 
 fn get_food_distance_map_inner<const N: usize>(grid: &Grid<N>) -> Vec<i16>

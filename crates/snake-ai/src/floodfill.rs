@@ -21,14 +21,21 @@ pub fn flood_fill<const N: usize>(
 where
     [(); (N + 63) / 64]: Sized,
 {
-    let start = std::time::Instant::now();
-    let res = flood_fill_inner(grid, start_x, start_y, max_depth, my_body, enemy_body);
-    crate::PERF_STATS.with(|s| {
-        let mut st = s.borrow_mut();
-        st.floodfill_calls += 1;
-        st.floodfill_duration += start.elapsed();
-    });
-    res
+    #[cfg(feature = "profiling")]
+    {
+        let start = std::time::Instant::now();
+        let res = flood_fill_inner(grid, start_x, start_y, max_depth, my_body, enemy_body);
+        crate::PERF_STATS.with(|s| {
+            let mut st = s.borrow_mut();
+            st.floodfill_calls += 1;
+            st.floodfill_duration += start.elapsed();
+        });
+        res
+    }
+    #[cfg(not(feature = "profiling"))]
+    {
+        flood_fill_inner(grid, start_x, start_y, max_depth, my_body, enemy_body)
+    }
 }
 
 fn flood_fill_inner<const N: usize>(
