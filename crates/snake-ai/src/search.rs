@@ -507,14 +507,17 @@ where
 
         let mut next_hash = current_hash;
         let old_health = me.health;
-        let new_health = if ate_food { 100 } else { old_health - 1 };
 
+        let ate_food_i32 = ate_food as i32;
+        let new_health = (old_health - 1) * (1 - ate_food_i32) + (100 * ate_food_i32);
+        
         me.health = new_health;
         me.body.push_front(Point { x: mv.x, y: mv.y });
 
         let cell_id: i8 = 2 + side as i8;
 
-        next_hash = ctx.zobrist.xor_health(next_hash, old_health, new_health, side == 0);
+        next_hash ^= ctx.zobrist.health[side][old_health.clamp(0, 100) as usize] 
+                   ^ ctx.zobrist.health[side][new_health.clamp(0, 100) as usize];
         if original_head_val != 0 {
             unsafe {
                 next_hash = ctx.zobrist.xor_unchecked(next_hash, mv.x, mv.y, original_head_val);

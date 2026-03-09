@@ -5,8 +5,7 @@ pub struct Zobrist {
     pub width: i32,
     pub height: i32,
     table: Vec<[u64; 4]>,
-    my_health: [u64; 101],
-    enemy_health: [u64; 101],
+    pub health: [[u64; 101]; 2], // 0 = me, 1 = enemy.
 }
 
 impl Zobrist {
@@ -19,18 +18,18 @@ impl Zobrist {
             slot[2] = splitmix64(&mut seed);
             slot[3] = splitmix64(&mut seed);
         }
-        let mut my_health = [0u64; 101];
-        let mut enemy_health = [0u64; 101];
+        
+        let mut health = [[0u64; 101]; 2];
         for i in 0..=100 {
-            my_health[i] = splitmix64(&mut seed);
-            enemy_health[i] = splitmix64(&mut seed);
+            health[0][i] = splitmix64(&mut seed);
+            health[1][i] = splitmix64(&mut seed);
         }
+        
         Self {
             width,
             height,
             table,
-            my_health,
-            enemy_health,
+            health,
         }
     }
 
@@ -54,8 +53,8 @@ impl Zobrist {
         xor_bits(grid.my_body, 2);
         xor_bits(grid.enemy_body, 3);
 
-        h ^= self.my_health[clamp_health(my_health)];
-        h ^= self.enemy_health[clamp_health(enemy_health)];
+        h ^= self.health[0][clamp_health(my_health)];
+        h ^= self.health[1][clamp_health(enemy_health)];
         h
     }
 
@@ -67,12 +66,6 @@ impl Zobrist {
         let p_idx = piece as usize;
 
         unsafe { current_hash ^ *self.table.get_unchecked(idx).get_unchecked(p_idx) }
-    }
-
-    #[inline(always)]
-    pub fn xor_health(&self, current_hash: u64, old_health: i32, new_health: i32, is_me: bool) -> u64 {
-        let table = if is_me { &self.my_health } else { &self.enemy_health };
-        current_hash ^ table[clamp_health(old_health)] ^ table[clamp_health(new_health)]
     }
 }
 
