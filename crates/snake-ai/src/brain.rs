@@ -394,6 +394,9 @@ where
     let started = Instant::now();
     let grid = Grid::<N>::from_state(cols, rows, &foods, &me.body, &enemy.body);
     let dist_map = Arc::<[i16]>::from(get_food_distance_map(&grid));
+    
+    let pre_worker_stats = crate::PERF_STATS.with(|s| *s.borrow());
+
     let grid_size = (cols * rows) as usize;
 
     let zobrist = get_or_init_zobrist(cols, rows).unwrap();
@@ -412,7 +415,7 @@ where
         grid_size,
     };
 
-    let (primary_res, aggregated_stats) = if num_threads <= 1 {
+    let (primary_res, mut aggregated_stats) = if num_threads <= 1 {
         let mut history = [Vec::new(), Vec::new()];
         let mut buffers = SearchBuffers::new(grid_size);
         let worker_result = execute_search_task(0, base_task, &mut history, &mut buffers);
@@ -423,6 +426,7 @@ where
         pool.run(num_threads, &worker_task)
     };
 
+    accumulate_perf_stats(&mut aggregated_stats, &pre_worker_stats);
     crate::PERF_STATS.with(|s| *s.borrow_mut() = aggregated_stats);
 
     let mut fallback_buffers = SearchBuffers::new(grid_size);
