@@ -1,15 +1,11 @@
 use snake_domain::Direction;
 use std::cell::UnsafeCell;
 use std::mem;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TtFlag {
-    #[default]
-    Exact,
-    LowerBound,
-    UpperBound,
-}
+pub const TT_FLAG_EXACT: u8 = 0;
+pub const TT_FLAG_LOWER: u8 = 1;
+pub const TT_FLAG_UPPER: u8 = 2;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TtMove {
@@ -36,10 +32,10 @@ pub struct TtEntry {
     pub score: i32,
     pub generation: u16,
     pub depth: u8,
-    pub flag: TtFlag,
+    pub flag: u8,
     pub mv_x: u8,
     pub mv_y: u8,
-    pub mv_dir: u8, // 0=Up, 1=Down, 2=Left, 3=Right, 255=None
+    pub mv_dir: u8,
 }
 
 impl Default for TtEntry {
@@ -49,7 +45,7 @@ impl Default for TtEntry {
             score: 0,
             generation: 0,
             depth: 0,
-            flag: TtFlag::Exact,
+            flag: TT_FLAG_EXACT,
             mv_x: 255,
             mv_y: 255,
             mv_dir: 255,
@@ -70,8 +66,9 @@ impl TtEntry {
     }
 }
 
+#[repr(align(32))]
 pub struct TtSlot {
-    seq: AtomicUsize,
+    seq: AtomicU32,
     entry: UnsafeCell<TtEntry>,
 }
 
@@ -81,7 +78,7 @@ unsafe impl Send for TtSlot {}
 impl Default for TtSlot {
     fn default() -> Self {
         Self {
-            seq: AtomicUsize::new(0),
+            seq: AtomicU32::new(0),
             entry: UnsafeCell::new(TtEntry::default()),
         }
     }
@@ -92,7 +89,7 @@ impl Clone for TtSlot {
         let seq = self.seq.load(Ordering::Relaxed);
         let entry = unsafe { *self.entry.get() };
         Self {
-            seq: AtomicUsize::new(seq),
+            seq: AtomicU32::new(seq),
             entry: UnsafeCell::new(entry),
         }
     }
@@ -176,7 +173,7 @@ impl TranspositionTable {
     }
 
     #[inline]
-    pub fn set(&self, hash: u64, depth: usize, score: i32, flag: TtFlag, mv_x: u8, mv_y: u8, mv_dir: u8) {
+    pub fn set(&self, hash: u64, depth: usize, score: i32, flag: u8, mv_x: u8, mv_y: u8, mv_dir: u8) {
         let idx = (hash as usize) & self.mask;
         let slot = unsafe { self.entries.get_unchecked(idx) };
 

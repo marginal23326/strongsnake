@@ -5,7 +5,7 @@ use crate::{
     grid::Grid,
     heuristics::evaluate,
     model::{AgentState, SearchBuffers},
-    tt::{TranspositionTable, TtFlag},
+    tt::{TranspositionTable, TT_FLAG_EXACT, TT_FLAG_LOWER, TT_FLAG_UPPER},
     zobrist::Zobrist,
 };
 
@@ -322,7 +322,7 @@ where
         && (entry.depth as usize) >= depth
     {
         match entry.flag {
-            TtFlag::Exact => {
+            TT_FLAG_EXACT => {
                 let mut pv = PvLine::new();
                 if let Some(d) = entry.get_direction() {
                     pv.push(d);
@@ -334,8 +334,9 @@ where
                     pv,
                 };
             }
-            TtFlag::LowerBound => alpha = alpha.max(entry.score),
-            TtFlag::UpperBound => beta = beta.min(entry.score),
+            TT_FLAG_LOWER => alpha = alpha.max(entry.score),
+            TT_FLAG_UPPER => beta = beta.min(entry.score),
+            _ => {}
         }
         if alpha >= beta {
             let mut pv = PvLine::new();
@@ -393,7 +394,7 @@ where
             -evaluate(grid, enemy, me, dist_map, ctx.cfg, ctx.buffers)
         };
 
-        ctx.tt.set(current_hash, 0, score, TtFlag::Exact, 255, 255, 255);
+        ctx.tt.set(current_hash, 0, score, TT_FLAG_EXACT, 255, 255, 255);
 
         return SearchResult {
             score,
@@ -742,11 +743,11 @@ where
 
     ctx.history_table[side][head_idx * 4 + best_move.dir_int] += (depth * depth) as i32;
     let tt_flag = if best_score <= original_alpha {
-        TtFlag::UpperBound
+        TT_FLAG_UPPER
     } else if best_score >= beta {
-        TtFlag::LowerBound
+        TT_FLAG_LOWER
     } else {
-        TtFlag::Exact
+        TT_FLAG_EXACT
     };
 
     let dir_byte = match best_move.dir {
