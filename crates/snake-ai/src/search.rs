@@ -83,6 +83,7 @@ pub struct SearchContext<'a> {
     pub zobrist: &'a Zobrist,
     pub buffers: &'a mut SearchBuffers,
     pub thread_id: usize,
+    pub nodes_searched: u64,
 }
 
 struct MoveList {
@@ -304,7 +305,7 @@ where
         q_depth,
     } = frame;
 
-    crate::PERF_STATS.with(|s| s.borrow_mut().negamax_calls += 1);
+    ctx.nodes_searched += 1;
 
     let original_alpha = alpha;
     let tt_entry = ctx.tt.get(current_hash);

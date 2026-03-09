@@ -252,6 +252,7 @@ where
         zobrist: task.zobrist.as_ref(),
         buffers,
         thread_id,
+        nodes_searched: 0,
     };
 
     let result = negamax(
@@ -270,6 +271,7 @@ where
         &mut search_ctx,
     );
 
+    crate::PERF_STATS.with(|s| s.borrow_mut().negamax_calls += search_ctx.nodes_searched);
     let stats = crate::PERF_STATS.with(|s| s.take());
     WorkerResult { thread_id, result, stats }
 }
