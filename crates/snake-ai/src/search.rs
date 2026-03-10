@@ -5,7 +5,7 @@ use crate::{
     grid::Grid,
     heuristics::evaluate,
     model::{AgentState, SearchBuffers},
-    tt::{TranspositionTable, TT_FLAG_EXACT, TT_FLAG_LOWER, TT_FLAG_UPPER},
+    tt::{TT_FLAG_EXACT, TT_FLAG_LOWER, TT_FLAG_UPPER, TranspositionTable},
     zobrist::Zobrist,
 };
 

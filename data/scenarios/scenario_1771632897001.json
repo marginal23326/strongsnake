@@ -1,14 +1,5 @@
 {
-  "id": "1771632897001",
-  "name": "Scenario 1771632897001",
-  "you_id": "ai-snake-for-test",
-  "expectation": {
-    "kind": "exact",
-    "direction": "down"
-  },
   "board": {
-    "width": 16,
-    "height": 9,
     "food": [
       {
         "x": 3,
@@ -17,12 +8,15 @@
       {
         "x": 15,
         "y": 4
+      },
+      {
+        "x": 9,
+        "y": 6
       }
     ],
+    "height": 9,
     "snakes": [
       {
-        "id": "ai-snake-for-test",
-        "name": "Test Target AI",
         "body": [
           {
             "x": 15,
@@ -41,11 +35,11 @@
             "y": 7
           }
         ],
-        "health": 5
+        "health": 5,
+        "id": "s2",
+        "name": "AI"
       },
       {
-        "id": "player-opponent-for-test",
-        "name": "Test Opponent",
         "body": [
           {
             "x": 10,
@@ -76,8 +70,18 @@
             "y": 6
           }
         ],
-        "health": 99
+        "health": 99,
+        "id": "s1",
+        "name": "Player"
       }
-    ]
-  }
+    ],
+    "width": 16
+  },
+  "expectation": {
+    "direction": "down",
+    "kind": "exact"
+  },
+  "id": "1773155651516",
+  "name": "scenario_1771632897001",
+  "you_id": "s2"
 }

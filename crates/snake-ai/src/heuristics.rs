@@ -63,14 +63,63 @@ where
 
     let total_len = me.body.len() + enemy.body.len();
     let total_area = (grid.width * grid.height) as usize;
-    let dense_tail_race = me.body.len() >= 20 
-    && enemy.body.len() >= 20 
-    && (total_len * 100) >= (cfg.dense_tail_race_occupancy * total_area);
+    let dense_tail_race =
+        me.body.len() >= 20 && enemy.body.len() >= 20 && (total_len * 100) >= (cfg.dense_tail_race_occupancy * total_area);
 
     score += me.body.len() as i32 * cfg.scores.length;
 
     let my_head = me.body.head();
     let enemy_head = enemy.body.head();
+
+    if me.health > 15 {
+        let base_pin = cfg.scores.territory_control.abs() * 100; // ~326,500
+        let mut my_pin_penalty = 0;
+
+        let dx = (my_head.x - enemy_head.x).abs();
+        let dy = (my_head.y - enemy_head.y).abs();
+
+        if my_head.x == 0 || my_head.x == grid.width - 1 {
+            let ex_dist = if my_head.x == 0 {
+                enemy_head.x
+            } else {
+                grid.width - 1 - enemy_head.x
+            };
+            if ex_dist <= 3 && dy <= 4 {
+                my_pin_penalty += base_pin * (8 - (ex_dist + dy));
+            }
+        }
+        if my_head.y == 0 || my_head.y == grid.height - 1 {
+            let ey_dist = if my_head.y == 0 {
+                enemy_head.y
+            } else {
+                grid.height - 1 - enemy_head.y
+            };
+            if ey_dist <= 3 && dx <= 4 {
+                my_pin_penalty += base_pin * (8 - (ey_dist + dx));
+            }
+        }
+
+        let mut enemy_pin_penalty = 0;
+        if enemy_head.x == 0 || enemy_head.x == grid.width - 1 {
+            let mx_dist = if enemy_head.x == 0 { my_head.x } else { grid.width - 1 - my_head.x };
+            if mx_dist <= 3 && dy <= 4 {
+                enemy_pin_penalty += base_pin * (8 - (mx_dist + dy));
+            }
+        }
+        if enemy_head.y == 0 || enemy_head.y == grid.height - 1 {
+            let my_dist = if enemy_head.y == 0 {
+                my_head.y
+            } else {
+                grid.height - 1 - my_head.y
+            };
+            if my_dist <= 3 && dx <= 4 {
+                enemy_pin_penalty += base_pin * (8 - (my_dist + dx));
+            }
+        }
+
+        score -= my_pin_penalty;
+        score += enemy_pin_penalty;
+    }
 
     let mut tail_is_safe = false;
     let mut original_tail_val = 0i8;
@@ -109,7 +158,14 @@ where
             };
             score += trap_score;
         } else if ff.count >= future_len {
-            score += cfg.scores.strategic_squeeze;
+            let tail = me.body.last();
+            let dist_to_tail = (my_head.x - tail.x).abs() + (my_head.y - tail.y).abs();
+
+            if dist_to_tail <= 2 || escape_time <= 2 {
+                score += cfg.scores.territory_control * 5;
+            } else {
+                score += cfg.scores.strategic_squeeze;
+            }
         } else {
             score -= escape_time * cfg.scores.territory_control * 2;
         }
@@ -132,7 +188,16 @@ where
                 cfg.scores.enemy_trapped
             };
             score += trap_score;
-        } else if ff.count < future_len {
+        } else if ff.count >= future_len {
+            let tail = enemy.body.last();
+            let dist_to_tail = (en_head.x - tail.x).abs() + (en_head.y - tail.y).abs();
+
+            if dist_to_tail <= 2 || escape_time <= 2 {
+                score -= cfg.scores.territory_control * 5;
+            } else {
+                score -= cfg.scores.strategic_squeeze;
+            }
+        } else {
             score += escape_time * cfg.scores.territory_control * 2;
         }
     }
