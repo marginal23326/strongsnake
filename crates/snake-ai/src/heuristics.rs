@@ -63,7 +63,9 @@ where
 
     let total_len = me.body.len() + enemy.body.len();
     let total_area = (grid.width * grid.height) as usize;
-    let dense_tail_race = me.body.len() >= 20 && enemy.body.len() >= 20 && (total_len * 100) / total_area >= cfg.dense_tail_race_occupancy;
+    let dense_tail_race = me.body.len() >= 20 
+    && enemy.body.len() >= 20 
+    && (total_len * 100) >= (cfg.dense_tail_race_occupancy * total_area);
 
     score += me.body.len() as i32 * cfg.scores.length;
 
