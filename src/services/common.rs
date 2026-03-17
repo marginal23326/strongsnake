@@ -223,28 +223,16 @@ pub fn build_playground_state(width: i32, height: i32, seed: u32) -> (GameState,
 }
 
 fn extract_agent_pair(state: &GameState, snake_id: &str) -> (AgentState, AgentState) {
-    let me = state
-        .board
-        .snakes
-        .iter()
-        .find(|s| s.id.0 == snake_id)
-        .cloned()
-        .unwrap_or_else(|| Snake::new(snake_id, snake_id, Vec::new(), 0));
-    let enemy = state
-        .board
-        .snakes
-        .iter()
-        .find(|s| s.id.0 != snake_id)
-        .cloned()
-        .unwrap_or_else(|| Snake::new("enemy", "enemy", Vec::new(), 0));
+    let me = state.board.snakes.iter().find(|s| s.id.0 == snake_id);
+    let enemy = state.board.snakes.iter().find(|s| s.id.0 != snake_id);
     (
         AgentState {
-            body: snake_ai::model::FastBody::from_vec(&me.body),
-            health: me.health,
+            body: snake_ai::model::FastBody::from_points(me.into_iter().flat_map(|snake| snake.body.iter().copied())),
+            health: me.map(|snake| snake.health).unwrap_or(0),
         },
         AgentState {
-            body: snake_ai::model::FastBody::from_vec(&enemy.body),
-            health: enemy.health,
+            body: snake_ai::model::FastBody::from_points(enemy.into_iter().flat_map(|snake| snake.body.iter().copied())),
+            health: enemy.map(|snake| snake.health).unwrap_or(0),
         },
     )
 }
@@ -311,15 +299,7 @@ pub(crate) async fn run_single_match_with_options(
         }
 
         let (me_s1, enemy_s1) = extract_agent_pair(&state, "s1");
-        let dir_s1 = decide_move_debug(
-            me_s1,
-            enemy_s1,
-            state.board.food.clone(),
-            state.board.width,
-            state.board.height,
-            cfg,
-        )
-        .best_move;
+        let dir_s1 = decide_move_debug(me_s1, enemy_s1, &state.board.food, state.board.width, state.board.height, cfg).best_move;
 
         let dir_s2 = if let Some(scripted_move) = scripted_opponent_moves.pop_front() {
             scripted_move
@@ -327,15 +307,7 @@ pub(crate) async fn run_single_match_with_options(
             match opponent {
                 OpponentMode::Local(opp_cfg) => {
                     let (me_s2, enemy_s2) = extract_agent_pair(&state, "s2");
-                    decide_move_debug(
-                        me_s2,
-                        enemy_s2,
-                        state.board.food.clone(),
-                        state.board.width,
-                        state.board.height,
-                        opp_cfg,
-                    )
-                    .best_move
+                    decide_move_debug(me_s2, enemy_s2, &state.board.food, state.board.width, state.board.height, opp_cfg).best_move
                 }
                 OpponentMode::Http { url, flavor } => {
                     request_http_move(&client, url, &state, "s2", *flavor, match_cfg.payload_timeout_ms).await

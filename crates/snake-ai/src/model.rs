@@ -11,16 +11,21 @@ pub struct FastBody {
 }
 
 impl FastBody {
-    pub fn from_vec(v: &[Point]) -> Self {
+    pub fn from_points<I>(points: I) -> Self
+    where
+        I: IntoIterator<Item = Point>,
+    {
         let mut buffer = [Point { x: 0, y: 0 }; MAX_BODY];
-        for (i, p) in v.iter().enumerate() {
-            buffer[i] = *p;
+        let mut len = 0;
+        for (i, p) in points.into_iter().enumerate() {
+            buffer[i] = p;
+            len = i + 1;
         }
-        Self {
-            buffer,
-            head_idx: 0,
-            len: v.len(),
-        }
+        Self { buffer, head_idx: 0, len }
+    }
+
+    pub fn from_vec(v: &[Point]) -> Self {
+        Self::from_points(v.iter().copied())
     }
 
     #[inline(always)]

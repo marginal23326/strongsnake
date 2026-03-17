@@ -48,14 +48,18 @@ pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[(SnakeId, D
             .map(|(_, d)| *d)
             .unwrap_or(Direction::Up);
 
-        let head = snake.body[0].moved(dir);
-        snake.body.insert(0, head);
+        let Some(current_head) = snake.body.front().copied() else {
+            snake.alive = false;
+            continue;
+        };
+        let head = current_head.moved(dir);
+        snake.body.push_front(head);
 
         if let Some(food_idx) = state.board.food.iter().position(|f| f.x == head.x && f.y == head.y) {
             state.board.food.remove(food_idx);
             snake.health = cfg.max_health;
         } else {
-            snake.body.pop();
+            snake.body.pop_back();
             snake.health -= 1;
         }
     }
@@ -80,7 +84,9 @@ pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[(SnakeId, D
         if !snake.alive || snake.body.is_empty() {
             continue;
         }
-        let head = snake.body[0];
+        let Some(head) = snake.body.front().copied() else {
+            continue;
+        };
 
         let out_of_bounds = head.x < 0 || head.y < 0 || head.x >= width || head.y >= height;
         if out_of_bounds {
@@ -113,7 +119,9 @@ pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[(SnakeId, D
             if idx == other_idx || other.body.is_empty() {
                 continue;
             }
-            let other_head = other.body[0];
+            let Some(other_head) = other.body.front().copied() else {
+                continue;
+            };
             if other_head.x == head.x && other_head.y == head.y && snake.body.len() <= other.body.len() {
                 head_hit = true;
                 break;
@@ -161,7 +169,7 @@ pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[(SnakeId, D
     }
 }
 
-pub fn snake_head_direction(body: &[Point]) -> Direction {
+pub fn snake_head_direction(body: &std::collections::VecDeque<Point>) -> Direction {
     if body.len() < 2 {
         return Direction::Up;
     }

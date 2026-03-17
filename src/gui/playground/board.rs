@@ -75,7 +75,7 @@ impl SnakeGuiApp {
                     if let Some(idx) = snake.body.iter().position(|p| p.x == x && p.y == y) {
                         snake.body.truncate(idx);
                     }
-                    snake.body.push(Point { x, y });
+                    snake.body.push_back(Point { x, y });
                     snake.health = 100;
                     snake.alive = true;
                 }

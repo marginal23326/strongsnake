@@ -72,8 +72,8 @@ async fn handle_move(State(state): State<ServerState>, Json(body): Json<Value>) 
         }
     };
 
-    let you = parsed.snakes.iter().find(|s| s.id.0 == parsed.you_id).cloned();
-    let enemy = parsed.snakes.iter().find(|s| s.id.0 != parsed.you_id).cloned();
+    let you = parsed.snakes.iter().find(|s| s.id.0 == parsed.you_id);
+    let enemy = parsed.snakes.iter().find(|s| s.id.0 != parsed.you_id);
     let Some(you) = you else {
         return Json(json!({ "move": "up" }));
     };
@@ -81,14 +81,14 @@ async fn handle_move(State(state): State<ServerState>, Json(body): Json<Value>) 
     let cfg = state.config.read().await.clone();
     let decision = decide_move_debug(
         AgentState {
-            body: FastBody::from_vec(&you.body),
+            body: FastBody::from_points(you.body.iter().copied()),
             health: you.health,
         },
         AgentState {
-            body: FastBody::from_vec(&enemy.as_ref().map(|e| e.body.clone()).unwrap_or_default()),
-            health: enemy.as_ref().map(|e| e.health).unwrap_or(0),
+            body: FastBody::from_points(enemy.into_iter().flat_map(|e| e.body.iter().copied())),
+            health: enemy.map(|e| e.health).unwrap_or(0),
         },
-        parsed.food,
+        &parsed.food,
         parsed.width,
         parsed.height,
         &cfg,

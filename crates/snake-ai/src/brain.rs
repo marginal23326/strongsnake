@@ -372,7 +372,7 @@ build_worker_tasks! {
     Task448 => 448,
 }
 
-pub fn decide_move_debug(me: AgentState, enemy: AgentState, foods: Vec<Point>, cols: i32, rows: i32, cfg: &AiConfig) -> Decision {
+pub fn decide_move_debug(me: AgentState, enemy: AgentState, foods: &[Point], cols: i32, rows: i32, cfg: &AiConfig) -> Decision {
     let area = (cols * rows) as usize;
     let required_words = (area + 63) / 64;
 
@@ -386,7 +386,7 @@ pub fn decide_move_debug(me: AgentState, enemy: AgentState, foods: Vec<Point>, c
 fn decide_move_debug_inner<const N: usize>(
     me: AgentState,
     enemy: AgentState,
-    foods: Vec<Point>,
+    foods: &[Point],
     cols: i32,
     rows: i32,
     cfg: &AiConfig,

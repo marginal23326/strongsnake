@@ -110,7 +110,7 @@ fn parse_standard_snakes(node: &Value) -> Vec<Snake> {
         .map(|s| Snake {
             id: snake_domain::SnakeId(s.get("id").and_then(Value::as_str).unwrap_or("s").to_owned()),
             name: s.get("name").and_then(Value::as_str).unwrap_or("snake").to_owned(),
-            body: parse_points(s.get("body").unwrap_or(&Value::Array(vec![]))),
+            body: parse_points(s.get("body").unwrap_or(&Value::Array(vec![]))).into(),
             health: s.get("health").and_then(Value::as_i64).unwrap_or(100) as i32,
             alive: true,
         })
@@ -124,7 +124,7 @@ fn parse_legacy_snakes(node: &Value, height: i32) -> Vec<Snake> {
         .map(|s| {
             let obj = clean_object(s);
             let body_raw = clean_list(obj.get("body").unwrap_or(&Value::Null));
-            let body = parse_points(&body_raw)
+            let body: Vec<Point> = parse_points(&body_raw)
                 .into_iter()
                 .map(|p| Point {
                     x: p.x,
@@ -134,7 +134,7 @@ fn parse_legacy_snakes(node: &Value, height: i32) -> Vec<Snake> {
             Snake {
                 id: snake_domain::SnakeId(obj.get("id").and_then(Value::as_str).unwrap_or("s").to_owned()),
                 name: obj.get("name").and_then(Value::as_str).unwrap_or("snake").to_owned(),
-                body,
+                body: body.into(),
                 health: obj.get("health").or_else(|| obj.get("hp")).and_then(Value::as_i64).unwrap_or(100) as i32,
                 alive: true,
             }
@@ -181,7 +181,7 @@ pub fn build_move_payload(state: &GameState, you_id: &str, flavor: ApiFlavor, ga
 
 fn format_snake_for_standard(snake: &Snake) -> Value {
     let body = snake.body.iter().map(|p| json!({ "x": p.x, "y": p.y })).collect::<Vec<_>>();
-    let head = snake.body.first().copied().unwrap_or(Point { x: 0, y: 0 });
+    let head = snake.body.front().copied().unwrap_or(Point { x: 0, y: 0 });
     json!({
         "id": snake.id.0,
         "name": snake.name,

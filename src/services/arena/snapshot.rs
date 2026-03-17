@@ -75,8 +75,8 @@ pub(crate) fn build_snapshot(trace: &[MatchTraceFrame], snapshot_ticks: usize, w
     let moves = trace[idx..].iter().map(|turn| turn.opponent_move.as_lower().to_owned()).collect();
 
     Some(ArenaSnapshotFile {
-        opponent_body: opponent.body,
-        local_body: local.body,
+        opponent_body: opponent.body.into_iter().collect(),
+        local_body: local.body.into_iter().collect(),
         foods: frame.state.board.food.clone(),
         opponent_health: opponent.health,
         local_health: local.health,

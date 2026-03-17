@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use serde::{Deserialize, Serialize};
 
 use crate::direction::Direction;
@@ -33,7 +35,7 @@ impl From<&str> for SnakeId {
 pub struct Snake {
     pub id: SnakeId,
     pub name: String,
-    pub body: Vec<Point>,
+    pub body: VecDeque<Point>,
     pub health: i32,
     #[serde(default)]
     pub alive: bool,
@@ -41,11 +43,11 @@ pub struct Snake {
 
 impl Snake {
     #[inline]
-    pub fn new(id: impl Into<SnakeId>, name: impl Into<String>, body: Vec<Point>, health: i32) -> Self {
+    pub fn new(id: impl Into<SnakeId>, name: impl Into<String>, body: impl Into<VecDeque<Point>>, health: i32) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
-            body,
+            body: body.into(),
             health,
             alive: true,
         }
@@ -53,7 +55,7 @@ impl Snake {
 
     #[inline]
     pub fn head(&self) -> Option<Point> {
-        self.body.first().copied()
+        self.body.front().copied()
     }
 
     #[inline]

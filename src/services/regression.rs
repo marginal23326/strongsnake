@@ -158,7 +158,7 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
             // WARMUP
             if repeats > 1 {
                 if let Some((me, enemy, food, cols, rows)) = scenario.into_ai_inputs() {
-                    let _ = decide_move_debug(me, enemy, food, cols, rows, &cfg);
+                    let _ = decide_move_debug(me, enemy, &food, cols, rows, &cfg);
                 }
             }
 
@@ -173,7 +173,7 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
                     skipped_scenario = true;
                     break;
                 };
-                let decision = decide_move_debug(me, enemy, food, cols, rows, &cfg);
+                let decision = decide_move_debug(me, enemy, &food, cols, rows, &cfg);
                 total_scenario_nodes += decision.search_nodes;
                 last_decision = Some(decision);
             }

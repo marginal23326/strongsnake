@@ -13,9 +13,11 @@ impl SnakeGuiApp {
 
     fn compact_json_state(&self) -> serde_json::Value {
         let (s1, s2) = self.player_and_ai();
+        let p_body = s1.map(|s| s.body.iter().copied().collect::<Vec<_>>()).unwrap_or_default();
+        let a_body = s2.map(|s| s.body.iter().copied().collect::<Vec<_>>()).unwrap_or_default();
         serde_json::json!({
-            "p": s1.map(|s| s.body.clone()).unwrap_or_default(),
-            "a": s2.map(|s| s.body.clone()).unwrap_or_default(),
+            "p": p_body,
+            "a": a_body,
             "foods": self.sim_state.board.food.clone(),
             "pHealth": s1.map(|s| s.health).unwrap_or(100),
             "aHealth": s2.map(|s| s.health).unwrap_or(100),
@@ -35,8 +37,8 @@ impl SnakeGuiApp {
             seed: self.sim_rng.state(),
             p_health: s1.map(|s| s.health).unwrap_or(100),
             a_health: s2.map(|s| s.health).unwrap_or(100),
-            p_body: s1.map(|s| s.body.clone()).unwrap_or_default(),
-            a_body: s2.map(|s| s.body.clone()).unwrap_or_default(),
+            p_body: s1.map(|s| s.body.iter().copied().collect::<Vec<_>>()).unwrap_or_default(),
+            a_body: s2.map(|s| s.body.iter().copied().collect::<Vec<_>>()).unwrap_or_default(),
             foods: self.sim_state.board.food.clone(),
             opponent_moves: Vec::new(),
         }
@@ -63,6 +65,8 @@ impl SnakeGuiApp {
     pub(in crate::gui) fn save_scenario_to_disk(&mut self) {
         let path = std::path::PathBuf::from(&self.scenario_dir).join(format!("{}.json", self.scenario_save_name));
         let (s1, s2) = self.player_and_ai();
+        let s2_body = s2.map(|s| s.body.iter().copied().collect::<Vec<_>>()).unwrap_or_default();
+        let s1_body = s1.map(|s| s.body.iter().copied().collect::<Vec<_>>()).unwrap_or_default();
 
         let json = serde_json::json!({
             "id": format!("{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()),
@@ -80,13 +84,13 @@ impl SnakeGuiApp {
                     {
                         "id": "s2",
                         "name": "AI",
-                        "body": s2.map(|s| &s.body).unwrap_or(&vec![]),
+                        "body": s2_body,
                         "health": s2.map(|s| s.health).unwrap_or(100)
                     },
                     {
                         "id": "s1",
                         "name": "Player",
-                        "body": s1.map(|s| &s.body).unwrap_or(&vec![]),
+                        "body": s1_body,
                         "health": s1.map(|s| s.health).unwrap_or(100)
                     }
                 ]

@@ -74,11 +74,11 @@ impl Scenario {
 
         Some((
             AgentState {
-                body: FastBody::from_vec(&me.body),
+                body: FastBody::from_points(me.body.iter().copied()),
                 health: me.health,
             },
             AgentState {
-                body: FastBody::from_vec(&enemy.body),
+                body: FastBody::from_points(enemy.body.iter().copied()),
                 health: enemy.health,
             },
             self.board.food.clone(),
