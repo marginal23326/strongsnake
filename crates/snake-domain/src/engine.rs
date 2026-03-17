@@ -30,23 +30,21 @@ pub struct TurnSummary {
     pub alive_ids: Vec<SnakeId>,
 }
 
-pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[(SnakeId, Direction)], rng: &mut R, cfg: SimConfig) -> TurnSummary {
+pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[Direction], rng: &mut R, cfg: SimConfig) -> TurnSummary {
     let width = state.board.width;
     let height = state.board.height;
 
     debug_assert!((width * height) as usize <= 448, "Board size too large for engine capacity");
 
-    for snake in &mut state.board.snakes {
+    for (snake_idx, snake) in state.board.snakes.iter_mut().enumerate() {
         if !snake.alive || snake.body.is_empty() {
             snake.alive = false;
             continue;
         }
 
-        let dir = intents
-            .iter()
-            .find(|(id, _)| id.0 == snake.id.0)
-            .map(|(_, d)| *d)
-            .unwrap_or(Direction::Up);
+        // `intents` is positional and must stay aligned with `state.board.snakes`.
+        // Current callers intentionally build it in board order, e.g. `[s1, s2]`.
+        let dir = intents.get(snake_idx).copied().unwrap_or(Direction::Up);
 
         let Some(current_head) = snake.body.front().copied() else {
             snake.alive = false;

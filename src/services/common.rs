@@ -5,9 +5,7 @@ use serde::Serialize;
 use serde_json::Value;
 use snake_ai::{AgentState, AiConfig, decide_move_debug};
 use snake_api::{ApiFlavor, build_move_payload, normalize_move_name};
-use snake_domain::{
-    Direction, FoodSettings, GameState, LcgRng, Point, SimConfig, Snake, SnakeId, place_initial_standard_food, simulate_turn,
-};
+use snake_domain::{Direction, FoodSettings, GameState, LcgRng, Point, SimConfig, Snake, place_initial_standard_food, simulate_turn};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MatchResult {
@@ -323,7 +321,7 @@ pub(crate) async fn run_single_match_with_options(
             });
         }
 
-        let intents = vec![(SnakeId("s1".to_owned()), dir_s1), (SnakeId("s2".to_owned()), dir_s2)];
+        let intents = [dir_s1, dir_s2];
         let turn_summary = simulate_turn(&mut state, &intents, &mut rng, sim_cfg);
         for event in &turn_summary.dead {
             match event.snake_id.0.as_str() {

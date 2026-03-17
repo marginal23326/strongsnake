@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use eframe::egui;
 use snake_ai::{AgentState, Decision, decide_move_debug};
-use snake_domain::{Direction, SimConfig, Snake, SnakeId, simulate_turn};
+use snake_domain::{Direction, SimConfig, Snake, simulate_turn};
 
 use crate::services::build_playground_state;
 
@@ -135,7 +135,7 @@ impl SnakeGuiApp {
 
         let ai_move = self.decide_ai_for_playground(&player, &ai).best_move;
 
-        let intents = vec![(SnakeId("s1".to_owned()), self.player_dir), (SnakeId("s2".to_owned()), ai_move)];
+        let intents = [self.player_dir, ai_move];
         let summary = simulate_turn(&mut self.sim_state, &intents, &mut self.sim_rng, SimConfig::default());
         if !summary.dead.is_empty() {
             self.log_line(format!("Turn {} deaths: {:?}", summary.turn, summary.dead));

@@ -1,5 +1,5 @@
 use eframe::egui::{self, Color32, Rect, Stroke, pos2, vec2};
-use snake_domain::{Direction, Point, SimConfig, SnakeId, simulate_turn};
+use snake_domain::{Direction, Point, SimConfig, simulate_turn};
 
 use super::super::state::{EditMode, SnakeGuiApp};
 
@@ -7,9 +7,6 @@ impl SnakeGuiApp {
     fn get_projected_state(&self) -> snake_domain::GameState {
         let mut state = self.sim_state.clone();
         let mut rng = self.sim_rng.clone();
-        let s1_id = SnakeId("s1".to_owned());
-        let s2_id = SnakeId("s2".to_owned());
-
         let max_turns = self.pv_line.len() / 2;
         let turns_to_simulate = self.pv_index.min(max_turns);
 
@@ -19,7 +16,7 @@ impl SnakeGuiApp {
             let m_s1 = self.pv_line.get(p_idx + 1).copied().unwrap_or(Direction::Up);
             p_idx += 2;
 
-            let intents = vec![(s2_id.clone(), m_s2), (s1_id.clone(), m_s1)];
+            let intents = [m_s1, m_s2];
             let _ = simulate_turn(&mut state, &intents, &mut rng, SimConfig::default());
         }
         state
