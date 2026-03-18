@@ -4,8 +4,8 @@ use anyhow::Result;
 use snake_ai::AiConfig;
 
 use super::super::common::{
-    MatchResult, MatchRunConfig, MatchRunOutput, MatchRuntimeOptions, MatchTraceFrame, resolve_opponent, run_single_match,
-    run_single_match_with_options,
+    MatchResult, MatchRunConfig, MatchRunOutput, MatchRuntimeOptions, MatchTraceFrame, build_http_client, resolve_opponent,
+    run_single_match_with_client, run_single_match_with_options_and_client,
 };
 use super::snapshot::{build_snapshot, display_path, load_snapshot, quote_for_cli, snapshot_path_for_mode, write_snapshot};
 use super::stats::{ArenaAccumulator, ArenaSummaryInput};
@@ -30,6 +30,7 @@ where
         request_timeout_ms: options.request_timeout_ms,
         payload_timeout_ms: options.payload_timeout_ms,
     };
+    let http_client = build_http_client(match_cfg.request_timeout_ms);
     let loaded_snapshot = if options.resume {
         Some(load_snapshot(&options.snapshot_file, options.width, options.height)?)
     } else {
@@ -75,9 +76,9 @@ where
         };
 
         let output = if runtime_options.initial_state.is_some() || runtime_options.capture_trace {
-            run_single_match_with_options(seed, &cfg, &opponent, &match_cfg, runtime_options).await
+            run_single_match_with_options_and_client(seed, &cfg, &opponent, &match_cfg, runtime_options, &http_client).await
         } else {
-            let result = run_single_match(seed, &cfg, &opponent, &match_cfg).await;
+            let result = run_single_match_with_client(seed, &cfg, &opponent, &match_cfg, &http_client).await;
             MatchRunOutput { result, trace: None }
         };
 

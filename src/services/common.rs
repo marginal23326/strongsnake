@@ -260,18 +260,32 @@ async fn request_http_move(
         .unwrap_or(Direction::Up)
 }
 
-pub(crate) async fn run_single_match(seed: u32, cfg: &AiConfig, opponent: &OpponentMode, match_cfg: &MatchRunConfig) -> MatchResult {
-    run_single_match_with_options(seed, cfg, opponent, match_cfg, MatchRuntimeOptions::default())
+pub(crate) fn build_http_client(timeout_ms: u64) -> Client {
+    Client::builder()
+        .timeout(std::time::Duration::from_millis(timeout_ms))
+        .build()
+        .expect("client build")
+}
+
+pub(crate) async fn run_single_match_with_client(
+    seed: u32,
+    cfg: &AiConfig,
+    opponent: &OpponentMode,
+    match_cfg: &MatchRunConfig,
+    client: &Client,
+) -> MatchResult {
+    run_single_match_with_options_and_client(seed, cfg, opponent, match_cfg, MatchRuntimeOptions::default(), client)
         .await
         .result
 }
 
-pub(crate) async fn run_single_match_with_options(
+pub(crate) async fn run_single_match_with_options_and_client(
     seed: u32,
     cfg: &AiConfig,
     opponent: &OpponentMode,
     match_cfg: &MatchRunConfig,
     options: MatchRuntimeOptions,
+    client: &Client,
 ) -> MatchRunOutput {
     let mut scripted_opponent_moves = options.scripted_opponent_moves;
     let (mut state, mut rng) = if let Some(initial_state) = options.initial_state {
@@ -283,10 +297,6 @@ pub(crate) async fn run_single_match_with_options(
     };
     let mut death = MatchDeathSummary::default();
     let mut trace = options.capture_trace.then(Vec::new);
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_millis(match_cfg.request_timeout_ms))
-        .build()
-        .expect("client build");
 
     let sim_cfg = SimConfig::default();
 
