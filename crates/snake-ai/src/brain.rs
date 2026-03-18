@@ -10,7 +10,7 @@ use crate::{
     grid::Grid,
     model::{AgentState, SearchBuffers},
     pathfinding::get_food_distance_map,
-    search::{RootChildRecord, SearchContext, SearchFrame, negamax},
+    search::{RootChildRecord, SearchContext, SearchFrame, negamax, reconstruct_pv},
     tt::TranspositionTable,
     zobrist::Zobrist,
 };
@@ -128,6 +128,7 @@ struct SearchTask<const N: usize>
 where
     [(); (N + 63) / 64]: Sized,
 {
+    build_debug: bool,
     grid: Grid<N>,
     me: AgentState,
     enemy: AgentState,
@@ -250,6 +251,7 @@ where
     let tt_guard = get_tt().read().unwrap();
     let mut search_ctx = SearchContext {
         root_depth: task.cfg.max_depth,
+        collect_root_children: task.build_debug && thread_id == 0,
         history_table: history,
         cfg: &task.cfg,
         tt: &tt_guard,
@@ -372,24 +374,41 @@ build_worker_tasks! {
     Task448 => 448,
 }
 
-pub fn decide_move_debug(me: AgentState, enemy: AgentState, foods: &[Point], cols: i32, rows: i32, cfg: &AiConfig) -> Decision {
-    let area = (cols * rows) as usize;
-    let required_words = (area + 63) / 64;
-
-    match required_words {
-        0..=2 => decide_move_debug_inner::<128>(me, enemy, foods, cols, rows, cfg),
-        3 => decide_move_debug_inner::<192>(me, enemy, foods, cols, rows, cfg),
-        _ => decide_move_debug_inner::<448>(me, enemy, foods, cols, rows, cfg),
-    }
+pub fn decide_move(me: AgentState, enemy: AgentState, foods: &[Point], cols: i32, rows: i32, cfg: &AiConfig) -> Decision {
+    decide_move_with_options(me, enemy, foods, cols, rows, cfg, false)
 }
 
-fn decide_move_debug_inner<const N: usize>(
+pub fn decide_move_debug(me: AgentState, enemy: AgentState, foods: &[Point], cols: i32, rows: i32, cfg: &AiConfig) -> Decision {
+    decide_move_with_options(me, enemy, foods, cols, rows, cfg, true)
+}
+
+fn decide_move_with_options(
     me: AgentState,
     enemy: AgentState,
     foods: &[Point],
     cols: i32,
     rows: i32,
     cfg: &AiConfig,
+    build_debug: bool,
+) -> Decision {
+    let area = (cols * rows) as usize;
+    let required_words = (area + 63) / 64;
+
+    match required_words {
+        0..=2 => decide_move_inner::<128>(me, enemy, foods, cols, rows, cfg, build_debug),
+        3 => decide_move_inner::<192>(me, enemy, foods, cols, rows, cfg, build_debug),
+        _ => decide_move_inner::<448>(me, enemy, foods, cols, rows, cfg, build_debug),
+    }
+}
+
+fn decide_move_inner<const N: usize>(
+    me: AgentState,
+    enemy: AgentState,
+    foods: &[Point],
+    cols: i32,
+    rows: i32,
+    cfg: &AiConfig,
+    build_debug: bool,
 ) -> Decision
 where
     [(); (N + 63) / 64]: Sized,
@@ -398,7 +417,7 @@ where
     crate::PERF_STATS.with(|s| *s.borrow_mut() = crate::PerfStats::default());
 
     let started = Instant::now();
-    let grid = Grid::<N>::from_state(cols, rows, &foods, &me.body, &enemy.body);
+    let grid = Grid::<N>::from_state(cols, rows, foods, &me.body, &enemy.body);
     let dist_map = Arc::<[i16]>::from(get_food_distance_map(&grid));
 
     let pre_worker_stats = crate::PERF_STATS.with(|s| *s.borrow());
@@ -411,12 +430,13 @@ where
     prepare_tt_for_search(cfg);
     let num_threads = resolve_thread_count(cfg);
     let base_task = SearchTask {
+        build_debug,
         grid: grid.clone(),
         me: me.clone(),
         enemy: enemy.clone(),
         dist_map,
         cfg: Arc::new(cfg.clone()),
-        zobrist,
+        zobrist: zobrist.clone(),
         initial_hash,
         grid_size,
     };
@@ -442,10 +462,26 @@ where
         .unwrap_or_else(|| fallback_move(&grid, &me, &mut fallback_buffers));
     let score = primary_res.score;
     let root_children = primary_res.children;
-    let pv = primary_res.pv.moves[0..primary_res.pv.len].to_vec();
+    let pv = if build_debug {
+        let tt_guard = get_tt().read().unwrap();
+        primary_res.mv.map_or_else(Vec::new, |root_move| {
+            reconstruct_pv(
+                grid.clone(),
+                me.clone(),
+                enemy.clone(),
+                initial_hash,
+                root_move,
+                cfg.max_depth,
+                &tt_guard,
+                zobrist.as_ref(),
+            )
+        })
+    } else {
+        Vec::new()
+    };
 
     let mut log = format!("Score: {}", score);
-    if root_children.is_empty() {
+    if build_debug && root_children.is_empty() {
         log.push_str(" | FAILSAFE");
     }
     let elapsed = started.elapsed();

@@ -9,7 +9,7 @@ use axum::{
 };
 use serde_json::{Value, json};
 use snake_ai::model::FastBody;
-use snake_ai::{AgentState, AiConfig, decide_move_debug};
+use snake_ai::{AgentState, AiConfig, decide_move};
 use snake_api::parse_move_request;
 use snake_domain::Direction;
 use tokio::{net::TcpListener, sync::RwLock};
@@ -79,7 +79,7 @@ async fn handle_move(State(state): State<ServerState>, Json(body): Json<Value>) 
     };
 
     let cfg = state.config.read().await.clone();
-    let decision = decide_move_debug(
+    let decision = decide_move(
         AgentState {
             body: FastBody::from_points(you.body.iter().copied()),
             health: you.health,

@@ -12,33 +12,6 @@ use crate::{
 const QUIESCENCE_MAX_EXTENSIONS: usize = 8;
 const SCORE_MIN: i32 = -2_000_000_000;
 
-#[derive(Debug, Clone)]
-pub struct PvLine {
-    pub moves: [Direction; 64],
-    pub len: usize,
-}
-
-impl Default for PvLine {
-    fn default() -> Self {
-        Self {
-            moves: [Direction::Up; 64],
-            len: 0,
-        }
-    }
-}
-
-impl PvLine {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    pub fn push(&mut self, dir: Direction) {
-        if self.len < 64 {
-            self.moves[self.len] = dir;
-            self.len += 1;
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SearchMove {
     pub x: i32,
@@ -61,7 +34,6 @@ pub struct SearchResult {
     pub score: i32,
     pub mv: Option<SearchMove>,
     pub children: Vec<RootChildRecord>,
-    pub pv: PvLine,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -77,6 +49,7 @@ pub struct SearchFrame<'a> {
 
 pub struct SearchContext<'a> {
     pub root_depth: usize,
+    pub collect_root_children: bool,
     pub history_table: &'a mut [Vec<i32>; 2],
     pub cfg: &'a AiConfig,
     pub tt: &'a TranspositionTable,
@@ -292,6 +265,150 @@ where
     get_safe_neighbors(grid, enemy, me).count <= 2
 }
 
+#[inline(always)]
+fn direction_index(dir: Direction) -> usize {
+    match dir {
+        Direction::Up => 0,
+        Direction::Down => 1,
+        Direction::Left => 2,
+        Direction::Right => 3,
+    }
+}
+
+#[inline(always)]
+fn apply_search_move<const N: usize>(
+    grid: &mut Grid<N>,
+    me: &mut AgentState,
+    side: usize,
+    mv: SearchMove,
+    zobrist: &Zobrist,
+    current_hash: u64,
+) -> Option<u64>
+where
+    [(); (N + 63) / 64]: Sized,
+{
+    if me.body.is_empty() {
+        return None;
+    }
+
+    let head = me.body.head();
+    let expected = head.moved(mv.dir);
+    if expected.x != mv.x || expected.y != mv.y {
+        return None;
+    }
+    if mv.x < 0 || mv.y < 0 || mv.x >= grid.width || mv.y >= grid.height {
+        return None;
+    }
+
+    let original_head_val = grid.get(mv.x, mv.y);
+    let ate_food = original_head_val == 1;
+    let old_health = me.health;
+    let new_health = if ate_food { 100 } else { old_health - 1 };
+    let cell_id: i8 = 2 + side as i8;
+
+    let mut next_hash =
+        current_hash ^ zobrist.health[side][old_health.clamp(0, 100) as usize] ^ zobrist.health[side][new_health.clamp(0, 100) as usize];
+
+    me.health = new_health;
+    me.body.push_front(Point { x: mv.x, y: mv.y });
+
+    if original_head_val != 0 {
+        unsafe {
+            next_hash = zobrist.xor_unchecked(next_hash, mv.x, mv.y, original_head_val);
+        }
+    }
+    unsafe {
+        next_hash = zobrist.xor_unchecked(next_hash, mv.x, mv.y, cell_id);
+    }
+
+    if !ate_food {
+        let tail = me.body.pop_back();
+        if tail.x != mv.x || tail.y != mv.y {
+            let original_tail_val = grid.get(tail.x, tail.y);
+            if original_tail_val == cell_id {
+                unsafe {
+                    grid.clear_unchecked(tail.x, tail.y, original_tail_val);
+                }
+            }
+            unsafe {
+                next_hash = zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
+            }
+        }
+    }
+
+    unsafe {
+        grid.replace_unchecked(mv.x, mv.y, original_head_val, cell_id);
+    }
+
+    Some(next_hash)
+}
+
+pub fn reconstruct_pv<const N: usize>(
+    mut grid: Grid<N>,
+    mut me: AgentState,
+    mut enemy: AgentState,
+    root_hash: u64,
+    root_move: SearchMove,
+    max_depth: usize,
+    tt: &TranspositionTable,
+    zobrist: &Zobrist,
+) -> Vec<Direction>
+where
+    [(); (N + 63) / 64]: Sized,
+{
+    if max_depth == 0 {
+        return Vec::new();
+    }
+
+    let mut pv = Vec::with_capacity(max_depth.min(64));
+    let Some(mut current_hash) = apply_search_move(&mut grid, &mut me, 0, root_move, zobrist, root_hash) else {
+        return pv;
+    };
+
+    pv.push(root_move.dir);
+    std::mem::swap(&mut me, &mut enemy);
+
+    let mut side = 1usize;
+    let mut remaining_depth = max_depth.saturating_sub(1);
+
+    while remaining_depth > 0 && pv.len() < 64 {
+        if me.body.is_empty() || me.health <= 0 || enemy.body.is_empty() || enemy.health <= 0 {
+            break;
+        }
+
+        let Some(entry) = tt.get(current_hash) else {
+            break;
+        };
+        if entry.flag != TT_FLAG_EXACT || (entry.depth as usize) < remaining_depth {
+            break;
+        }
+        let Some(dir) = entry.get_direction() else {
+            break;
+        };
+        if entry.mv_x == 255 || entry.mv_y == 255 {
+            break;
+        }
+
+        let mv = SearchMove {
+            x: entry.mv_x as i32,
+            y: entry.mv_y as i32,
+            dir,
+            dir_int: direction_index(dir),
+        };
+        let Some(next_hash) = apply_search_move(&mut grid, &mut me, side, mv, zobrist, current_hash) else {
+            break;
+        };
+
+        pv.push(dir);
+        std::mem::swap(&mut me, &mut enemy);
+        current_hash = next_hash;
+        side = 1 - side;
+        remaining_depth -= 1;
+    }
+
+    pv
+}
+
 pub fn negamax<const N: usize>(
     grid: &mut Grid<N>,
     me: &mut AgentState,
@@ -323,15 +440,10 @@ where
     {
         match entry.flag {
             TT_FLAG_EXACT => {
-                let mut pv = PvLine::new();
-                if let Some(d) = entry.get_direction() {
-                    pv.push(d);
-                }
                 return SearchResult {
                     score: entry.score,
                     mv: None,
                     children: Vec::new(),
-                    pv,
                 };
             }
             TT_FLAG_LOWER => alpha = alpha.max(entry.score),
@@ -339,15 +451,10 @@ where
             _ => {}
         }
         if alpha >= beta {
-            let mut pv = PvLine::new();
-            if let Some(d) = entry.get_direction() {
-                pv.push(d);
-            }
             return SearchResult {
                 score: entry.score,
                 mv: None,
                 children: Vec::new(),
-                pv,
             };
         }
     }
@@ -357,7 +464,6 @@ where
             score: ctx.cfg.scores.loss - depth as i32,
             mv: None,
             children: Vec::new(),
-            pv: PvLine::new(),
         };
     }
     if enemy.body.is_empty() || enemy.health <= 0 {
@@ -365,7 +471,6 @@ where
             score: ctx.cfg.scores.win + depth as i32,
             mv: None,
             children: Vec::new(),
-            pv: PvLine::new(),
         };
     }
 
@@ -400,7 +505,6 @@ where
             score,
             mv: None,
             children: Vec::new(),
-            pv: PvLine::new(),
         };
     }
 
@@ -414,7 +518,6 @@ where
             score: ctx.cfg.scores.loss - depth as i32,
             mv: None,
             children: Vec::new(),
-            pv: PvLine::new(),
         };
     }
 
@@ -476,11 +579,14 @@ where
         }
     }
 
-    let mut child_records = Vec::new();
+    let mut child_records = if is_root && ctx.collect_root_children {
+        Vec::with_capacity(moves.len())
+    } else {
+        Vec::new()
+    };
     let mut best_move = moves[0];
     let mut best_score = SCORE_MIN;
     let mut best_tie_break = SCORE_MIN;
-    let mut best_pv = PvLine::new();
 
     for (i, &mv) in moves.iter().enumerate() {
         let mut collision_penalty = 0;
@@ -602,7 +708,6 @@ where
         };
 
         let mut child_score = 0;
-        let mut child_pv = PvLine::new();
 
         if i == 0 {
             // PV Move
@@ -622,7 +727,6 @@ where
                 ctx,
             );
             child_score = child.score;
-            child_pv = child.pv;
         } else {
             let mut needs_full_search = true;
 
@@ -652,7 +756,6 @@ where
 
                 if temp_mod_lmr < alpha && !is_massive_win {
                     child_score = child_lmr.score;
-                    child_pv = child_lmr.pv;
                     needs_full_search = false;
                 }
             }
@@ -675,7 +778,6 @@ where
                     ctx,
                 );
                 child_score = child.score;
-                child_pv = child.pv;
 
                 let temp_mod = calc_mod_score(child_score);
                 if temp_mod > alpha && temp_mod < beta {
@@ -695,7 +797,6 @@ where
                         ctx,
                     );
                     child_score = child_re.score;
-                    child_pv = child_re.pv;
                 }
             }
         }
@@ -717,7 +818,7 @@ where
         }
         me.health = old_health;
 
-        if is_root {
+        if is_root && ctx.collect_root_children {
             child_records.push(RootChildRecord {
                 mv,
                 raw_recursion_score: child_score,
@@ -731,7 +832,6 @@ where
             best_score = modified_score;
             best_move = mv;
             best_tie_break = tie_break;
-            best_pv = child_pv;
         }
         if best_score > alpha {
             alpha = best_score;
@@ -767,16 +867,9 @@ where
         dir_byte,
     );
 
-    let mut final_pv = PvLine::new();
-    final_pv.push(best_move.dir);
-    for i in 0..best_pv.len {
-        final_pv.push(best_pv.moves[i]);
-    }
-
     SearchResult {
         score: best_score,
         mv: Some(best_move),
         children: child_records,
-        pv: final_pv,
     }
 }

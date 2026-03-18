@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use serde::Serialize;
-use snake_ai::{AiConfig, decide_move_debug, warm_up_runtime};
+use snake_ai::{AiConfig, decide_move, decide_move_debug, warm_up_runtime};
 use snake_io::{Expectation, load_scenarios_from_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -158,7 +158,7 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
             // WARMUP
             if repeats > 1 {
                 if let Some((me, enemy, food, cols, rows)) = scenario.into_ai_inputs() {
-                    let _ = decide_move_debug(me, enemy, &food, cols, rows, &cfg);
+                    let _ = decide_move(me, enemy, &food, cols, rows, &cfg);
                 }
             }
 
@@ -173,7 +173,7 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
                     skipped_scenario = true;
                     break;
                 };
-                let decision = decide_move_debug(me, enemy, &food, cols, rows, &cfg);
+                let decision = decide_move(me, enemy, &food, cols, rows, &cfg);
                 total_scenario_nodes += decision.search_nodes;
                 last_decision = Some(decision);
             }
@@ -200,6 +200,10 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
             } else {
                 failed += 1;
                 if options.output.show_fails() {
+                    let Some((me, enemy, food, cols, rows)) = scenario.into_ai_inputs() else {
+                        continue;
+                    };
+                    let decision = decide_move_debug(me, enemy, &food, cols, rows, &cfg);
                     println!("DEBUG: Root Moves for {}:", file_name);
                     for child in &decision.root_children {
                         println!(

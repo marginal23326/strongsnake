@@ -14,7 +14,7 @@ pub mod tt;
 pub mod voronoi;
 pub mod zobrist;
 
-pub use brain::{Decision, decide_move_debug, warm_up_runtime};
+pub use brain::{Decision, decide_move, decide_move_debug, warm_up_runtime};
 pub use config::{AiConfig, RuntimeConfig, ScoreConfig};
 pub use model::AgentState;
 

@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
-use snake_ai::{AgentState, AiConfig, decide_move_debug};
+use snake_ai::{AgentState, AiConfig, decide_move};
 use snake_api::{ApiFlavor, build_move_payload, normalize_move_name};
 use snake_domain::{Direction, FoodSettings, GameState, LcgRng, Point, SimConfig, Snake, place_initial_standard_food, simulate_turn};
 
@@ -297,7 +297,7 @@ pub(crate) async fn run_single_match_with_options(
         }
 
         let (me_s1, enemy_s1) = extract_agent_pair(&state, "s1");
-        let dir_s1 = decide_move_debug(me_s1, enemy_s1, &state.board.food, state.board.width, state.board.height, cfg).best_move;
+        let dir_s1 = decide_move(me_s1, enemy_s1, &state.board.food, state.board.width, state.board.height, cfg).best_move;
 
         let dir_s2 = if let Some(scripted_move) = scripted_opponent_moves.pop_front() {
             scripted_move
@@ -305,7 +305,7 @@ pub(crate) async fn run_single_match_with_options(
             match opponent {
                 OpponentMode::Local(opp_cfg) => {
                     let (me_s2, enemy_s2) = extract_agent_pair(&state, "s2");
-                    decide_move_debug(me_s2, enemy_s2, &state.board.food, state.board.width, state.board.height, opp_cfg).best_move
+                    decide_move(me_s2, enemy_s2, &state.board.food, state.board.width, state.board.height, opp_cfg).best_move
                 }
                 OpponentMode::Http { url, flavor } => {
                     request_http_move(&client, url, &state, "s2", *flavor, match_cfg.payload_timeout_ms).await
