@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{Point, Snake, rng::RngSource};
@@ -21,25 +19,71 @@ impl Default for FoodSettings {
     }
 }
 
-fn get_unoccupied_points(width: i32, height: i32, snakes: &[Snake], food: &[Point]) -> Vec<Point> {
-    let mut occupied = HashSet::new();
+#[inline]
+fn in_bounds(width: i32, height: i32, point: Point) -> bool {
+    point.x >= 0 && point.x < width && point.y >= 0 && point.y < height
+}
+
+#[inline]
+fn point_idx(width: i32, point: Point) -> usize {
+    (point.y * width + point.x) as usize
+}
+
+fn build_occupied_map(width: i32, height: i32, snakes: &[Snake], food: &[Point]) -> Vec<bool> {
+    let area = (width.max(0) * height.max(0)) as usize;
+    let mut occupied = vec![false; area];
+
     for snake in snakes {
-        for part in &snake.body {
-            occupied.insert((part.x, part.y));
+        for &part in &snake.body {
+            if in_bounds(width, height, part) {
+                occupied[point_idx(width, part)] = true;
+            }
         }
     }
-    for item in food {
-        occupied.insert((item.x, item.y));
+
+    for &item in food {
+        if in_bounds(width, height, item) {
+            occupied[point_idx(width, item)] = true;
+        }
     }
 
-    let mut points = Vec::new();
+    occupied
+}
+
+fn sample_single_unoccupied<R: RngSource>(rng: &mut R, width: i32, height: i32, occupied: &[bool]) -> Option<Point> {
+    let mut seen = 0usize;
+    let mut selected = None;
+
     for y in 0..height {
         for x in 0..width {
-            if !occupied.contains(&(x, y)) {
+            let idx = (y * width + x) as usize;
+            if occupied[idx] {
+                continue;
+            }
+
+            seen += 1;
+            if rng.rand_int(seen) == 0 {
+                selected = Some(Point { x, y });
+            }
+        }
+    }
+
+    selected
+}
+
+fn collect_unoccupied_points(width: i32, height: i32, occupied: &[bool]) -> Vec<Point> {
+    let mut points = Vec::new();
+    points.reserve(occupied.len());
+
+    for y in 0..height {
+        for x in 0..width {
+            let idx = (y * width + x) as usize;
+            if !occupied[idx] {
                 points.push(Point { x, y });
             }
         }
     }
+
     points
 }
 
@@ -76,7 +120,20 @@ fn place_food_randomly_at_positions<R: RngSource>(rng: &mut R, food: &mut Vec<Po
 }
 
 fn place_food_randomly<R: RngSource>(rng: &mut R, width: i32, height: i32, snakes: &[Snake], food: &mut Vec<Point>, count: usize) -> usize {
-    let mut unoccupied = get_unoccupied_points(width, height, snakes, food);
+    if count == 0 || width <= 0 || height <= 0 {
+        return 0;
+    }
+
+    let occupied = build_occupied_map(width, height, snakes, food);
+    if count == 1 {
+        if let Some(point) = sample_single_unoccupied(rng, width, height, &occupied) {
+            food.push(point);
+            return 1;
+        }
+        return 0;
+    }
+
+    let mut unoccupied = collect_unoccupied_points(width, height, &occupied);
     place_food_randomly_at_positions(rng, food, count, &mut unoccupied)
 }
 
