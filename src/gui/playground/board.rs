@@ -183,20 +183,20 @@ impl SnakeGuiApp {
         };
 
         // Hover Effect.
-        if let Some(hover_pos) = response.hover_pos() {
-            if let Some((hx, hy)) = Self::pos_to_cell(hover_pos, rect, width, height, cell_size) {
-                let hover_color = match self.edit_mode {
-                    EditMode::PaintP1 => Color32::from_rgba_unmultiplied(88, 166, 255, 60),
-                    EditMode::PaintAi => Color32::from_rgba_unmultiplied(255, 123, 114, 60),
-                    EditMode::Food => Color32::from_rgba_unmultiplied(126, 231, 135, 60),
-                    EditMode::Erase => Color32::from_rgba_unmultiplied(255, 255, 255, 20),
-                };
-                let h_rect = Rect::from_min_size(
-                    pos2(rect.left() + hx as f32 * cell_size, rect.bottom() - (hy as f32 + 1.0) * cell_size),
-                    vec2(cell_size, cell_size),
-                );
-                painter.rect_filled(h_rect, 0.0, hover_color);
-            }
+        if let Some(hover_pos) = response.hover_pos()
+            && let Some((hx, hy)) = Self::pos_to_cell(hover_pos, rect, width, height, cell_size)
+        {
+            let hover_color = match self.edit_mode {
+                EditMode::PaintP1 => Color32::from_rgba_unmultiplied(88, 166, 255, 60),
+                EditMode::PaintAi => Color32::from_rgba_unmultiplied(255, 123, 114, 60),
+                EditMode::Food => Color32::from_rgba_unmultiplied(126, 231, 135, 60),
+                EditMode::Erase => Color32::from_rgba_unmultiplied(255, 255, 255, 20),
+            };
+            let h_rect = Rect::from_min_size(
+                pos2(rect.left() + hx as f32 * cell_size, rect.bottom() - (hy as f32 + 1.0) * cell_size),
+                vec2(cell_size, cell_size),
+            );
+            painter.rect_filled(h_rect, 0.0, hover_color);
         }
 
         {

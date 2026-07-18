@@ -81,7 +81,7 @@ impl MoveList {
 
 fn get_safe_neighbors<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &AgentState) -> MoveList
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[cfg(feature = "profiling")]
     {
@@ -102,7 +102,7 @@ where
 
 fn get_safe_neighbors_inner<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &AgentState) -> MoveList
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     let mut list = MoveList::new();
     let my_body = &me.body;
@@ -243,7 +243,7 @@ fn root_tie_breaker(me: &AgentState, enemy: &AgentState, cols: i32, rows: i32, m
 
 fn should_extend_leaf<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> bool
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     let my_len = me.body.len();
     let enemy_len = enemy.body.len();
@@ -285,7 +285,7 @@ fn apply_search_move<const N: usize>(
     current_hash: u64,
 ) -> Option<u64>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     if me.body.is_empty() {
         return None;
@@ -343,6 +343,7 @@ where
     Some(next_hash)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn reconstruct_pv<const N: usize>(
     mut grid: Grid<N>,
     mut me: AgentState,
@@ -354,7 +355,7 @@ pub fn reconstruct_pv<const N: usize>(
     zobrist: &Zobrist,
 ) -> Vec<Direction>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     if max_depth == 0 {
         return Vec::new();
@@ -417,7 +418,7 @@ pub fn negamax<const N: usize>(
     ctx: &mut SearchContext<'_>,
 ) -> SearchResult
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     let SearchFrame {
         dist_map,
@@ -598,11 +599,11 @@ where
                 let my_len = me.body.len();
                 let opp_len = enemy.body.len();
                 if opp_len > my_len {
-                    collision_penalty = ctx.cfg.scores.head_on_collision as i32;
+                    collision_penalty = ctx.cfg.scores.head_on_collision;
                 } else if opp_len == my_len {
-                    collision_penalty = ctx.cfg.scores.draw as i32;
+                    collision_penalty = ctx.cfg.scores.draw;
                 } else {
-                    kill_threat_bonus = ctx.cfg.scores.kill_pressure as i32;
+                    kill_threat_bonus = ctx.cfg.scores.kill_pressure;
                 }
             }
         }
@@ -668,7 +669,7 @@ where
         if is_root {
             let continuation_moves = get_safe_neighbors(grid, me, enemy).count;
             if continuation_moves == 0 {
-                root_bonus += ctx.cfg.scores.trap_danger as i32;
+                root_bonus += ctx.cfg.scores.trap_danger;
             }
 
             let my_len = me.body.len();
@@ -701,7 +702,7 @@ where
                     ms = ms.saturating_add(kill_threat_bonus);
                 }
                 if ate_food && ms > -50_000_000 {
-                    ms = ms.saturating_add(ctx.cfg.scores.eat_reward as i32);
+                    ms = ms.saturating_add(ctx.cfg.scores.eat_reward);
                 }
             }
             ms.saturating_add(root_bonus)

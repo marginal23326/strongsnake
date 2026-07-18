@@ -16,15 +16,15 @@ pub(super) fn ui_card<R>(ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui:
 }
 
 impl SnakeGuiApp {
-    pub(super) fn draw_top_panel(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("top")
+    pub(super) fn draw_top_panel(&mut self, ui: &mut egui::Ui) {
+        egui::Panel::top("top")
             .frame(
                 Frame::new()
-                    .fill(ctx.style().visuals.panel_fill)
+                    .fill(ui.style().visuals.panel_fill)
                     .inner_margin(Margin::symmetric(16, 8))
-                    .stroke(Stroke::new(1.0, ctx.style().visuals.widgets.noninteractive.bg_stroke.color)),
+                    .stroke(Stroke::new(1.0, ui.style().visuals.widgets.noninteractive.bg_stroke.color)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     // --- 1. File Menu for Scenario Loading & Saving ---
                     ui.menu_button("File", |ui| {
@@ -110,23 +110,23 @@ impl SnakeGuiApp {
             });
     }
 
-    pub(super) fn draw_logs_panel(&mut self, ctx: &egui::Context) {
-        let show_logs = ctx.data(|d| d.get_temp(egui::Id::new("show_logs")).unwrap_or(false));
+    pub(super) fn draw_logs_panel(&mut self, ui: &mut egui::Ui) {
+        let show_logs = ui.data(|d| d.get_temp(egui::Id::new("show_logs")).unwrap_or(false));
         if !show_logs {
             return;
         }
 
-        egui::SidePanel::right("logs")
+        egui::Panel::right("logs")
             .resizable(true)
-            .default_width(340.0)
-            .min_width(280.0)
+            .default_size(340.0)
+            .min_size(280.0)
             .frame(
                 Frame::new()
-                    .fill(ctx.style().visuals.panel_fill)
+                    .fill(ui.style().visuals.panel_fill)
                     .inner_margin(Margin::same(12))
-                    .stroke(Stroke::new(1.0, ctx.style().visuals.widgets.noninteractive.bg_stroke.color)),
+                    .stroke(Stroke::new(1.0, ui.style().visuals.widgets.noninteractive.bg_stroke.color)),
             )
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading(RichText::new("System Logs").strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -144,20 +144,20 @@ impl SnakeGuiApp {
                         egui::TextEdit::multiline(&mut self.logs)
                             .font(egui::TextStyle::Monospace)
                             .desired_width(f32::INFINITY)
-                            .frame(false)
+                            .frame(egui::Frame::NONE)
                             .lock_focus(true),
                     );
                 });
             });
     }
 
-    pub(super) fn draw_central_panel(&mut self, ctx: &egui::Context) {
-        self.draw_scenario_load_dialog(ctx);
-        self.draw_scenario_save_dialog(ctx);
+    pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
+        self.draw_scenario_load_dialog(ui);
+        self.draw_scenario_save_dialog(ui);
 
-        let frame = Frame::new().fill(ctx.style().visuals.panel_fill).inner_margin(Margin::same(16));
+        let frame = Frame::new().fill(ui.style().visuals.panel_fill).inner_margin(Margin::same(16));
 
-        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+        egui::CentralPanel::default().frame(frame).show(ui, |ui| {
             if self.tab != Tab::Playground {
                 egui::ScrollArea::vertical().show(ui, |ui| match self.tab {
                     Tab::Regression => self.show_regression_tab(ui),

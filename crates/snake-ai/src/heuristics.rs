@@ -22,7 +22,7 @@ pub fn evaluate<const N: usize>(
     buffers: &mut SearchBuffers,
 ) -> i32
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[cfg(feature = "profiling")]
     {
@@ -50,7 +50,7 @@ fn evaluate_inner<const N: usize>(
     buffers: &mut SearchBuffers,
 ) -> i32
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     if me.health <= 0 || me.body.is_empty() {
         return cfg.scores.loss;

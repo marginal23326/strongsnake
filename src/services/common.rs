@@ -354,7 +354,7 @@ pub(crate) async fn run_single_match_with_options_and_client(
                         .and_then(|idx| state.board.snakes.get(idx))
                         .map(|snake| snake.id.0.as_str())
                         .unwrap_or("s2");
-                    request_http_move(&client, url, &state, opponent_id, *flavor, match_cfg.payload_timeout_ms).await
+                    request_http_move(client, url, &state, opponent_id, *flavor, match_cfg.payload_timeout_ms).await
                 }
             }
         };

@@ -126,7 +126,7 @@ fn accumulate_perf_stats(total: &mut crate::PerfStats, stats: &crate::PerfStats)
 #[derive(Clone)]
 struct SearchTask<const N: usize>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     build_debug: bool,
     grid: Grid<N>,
@@ -145,6 +145,7 @@ struct WorkerResult {
     stats: crate::PerfStats,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum WorkerCommand {
     Search {
         task: WorkerTask,
@@ -241,7 +242,7 @@ fn execute_search_task<const N: usize>(
     buffers: &mut SearchBuffers,
 ) -> WorkerResult
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     crate::PERF_STATS.with(|s| *s.borrow_mut() = crate::PerfStats::default());
 
@@ -307,7 +308,7 @@ fn worker_loop(thread_id: usize, rx: mpsc::Receiver<WorkerCommand>) {
 
 fn fallback_move<const N: usize>(grid: &Grid<N>, me: &AgentState, buffers: &mut SearchBuffers) -> Direction
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     if me.body.is_empty() {
         return Direction::Up;
@@ -392,7 +393,7 @@ fn decide_move_with_options(
     build_debug: bool,
 ) -> Decision {
     let area = (cols * rows) as usize;
-    let required_words = (area + 63) / 64;
+    let required_words = area.div_ceil(64);
 
     match required_words {
         0..=2 => decide_move_inner::<128>(me, enemy, foods, cols, rows, cfg, build_debug),
@@ -411,7 +412,7 @@ fn decide_move_inner<const N: usize>(
     build_debug: bool,
 ) -> Decision
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
     SearchTask<N>: IntoWorkerTask,
 {
     crate::PERF_STATS.with(|s| *s.borrow_mut() = crate::PerfStats::default());

@@ -19,7 +19,7 @@ pub fn flood_fill<const N: usize>(
     _buffers: &mut SearchBuffers,
 ) -> FloodFillResult
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[cfg(feature = "profiling")]
     {
@@ -47,7 +47,7 @@ fn flood_fill_inner<const N: usize>(
     enemy_body: Option<&FastBody>,
 ) -> FloodFillResult
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     if start_x < 0 || start_y < 0 || start_x >= grid.width || start_y >= grid.height {
         return FloodFillResult {

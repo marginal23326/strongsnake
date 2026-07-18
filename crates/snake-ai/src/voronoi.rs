@@ -11,7 +11,7 @@ pub struct VoronoiResult {
 
 pub fn compute_voronoi<const N: usize>(grid: &Grid<N>, my_head: Point, enemy_head: Point, _buffers: &mut SearchBuffers) -> VoronoiResult
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[cfg(feature = "profiling")]
     {
@@ -32,7 +32,7 @@ where
 
 fn compute_voronoi_inner<const N: usize>(grid: &Grid<N>, my_head: Point, enemy_head: Point) -> VoronoiResult
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     let mut my_front = BitBoard::<N>::with_bit(grid.idx(my_head.x, my_head.y));
     let mut en_front = BitBoard::<N>::with_bit(grid.idx(enemy_head.x, enemy_head.y));

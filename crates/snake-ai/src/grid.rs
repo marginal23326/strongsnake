@@ -4,7 +4,7 @@ use snake_domain::Point;
 #[derive(Clone)]
 pub struct Grid<const N: usize>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     pub width: i32,
     pub height: i32,
@@ -16,7 +16,7 @@ where
 
 impl<const N: usize> Grid<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     pub fn new(width: i32, height: i32) -> Self {
         if (width * height) as usize > N {

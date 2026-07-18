@@ -478,10 +478,10 @@ fn main() -> Result<()> {
             }
 
             let mut args = args;
-            if args.depths == RegressionOptions::DEFAULT_DEPTHS_RAW {
-                if let Some(raw) = cli.test_depths.as_deref() {
-                    args.depths = raw.to_owned();
-                }
+            if args.depths == RegressionOptions::DEFAULT_DEPTHS_RAW
+                && let Some(raw) = cli.test_depths.as_deref()
+            {
+                args.depths = raw.to_owned();
             }
 
             let rust_root = rust_root();

@@ -156,10 +156,10 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
             let scenario = &named.scenario;
 
             // WARMUP
-            if repeats > 1 {
-                if let Some((me, enemy, food, cols, rows)) = scenario.into_ai_inputs() {
-                    let _ = decide_move(me, enemy, &food, cols, rows, &cfg);
-                }
+            if repeats > 1
+                && let Some((me, enemy, food, cols, rows)) = scenario.into_ai_inputs()
+            {
+                let _ = decide_move(me, enemy, &food, cols, rows, &cfg);
             }
 
             let mut total_scenario_nodes = 0u64;

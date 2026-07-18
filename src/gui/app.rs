@@ -7,12 +7,12 @@ use snake_ai::AiConfig;
 use super::state::SnakeGuiApp;
 
 impl eframe::App for SnakeGuiApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         const AUTO_TICK_INTERVAL: Duration = Duration::from_millis(220);
 
-        self.poll_worker(ctx);
+        self.poll_worker(ui);
         self.sync_playground_playback();
-        self.process_playground_keys(ctx);
+        self.process_playground_keys(ui);
 
         if self.auto_run {
             if self.last_auto_tick.elapsed() >= AUTO_TICK_INTERVAL {
@@ -20,12 +20,12 @@ impl eframe::App for SnakeGuiApp {
                 self.last_auto_tick = Instant::now();
             }
             let until_next_tick = AUTO_TICK_INTERVAL.saturating_sub(self.last_auto_tick.elapsed());
-            ctx.request_repaint_after(until_next_tick);
+            ui.request_repaint_after(until_next_tick);
         }
 
-        self.draw_top_panel(ctx);
-        self.draw_logs_panel(ctx);
-        self.draw_central_panel(ctx);
+        self.draw_top_panel(ui);
+        self.draw_logs_panel(ui);
+        self.draw_central_panel(ui);
     }
 }
 
@@ -43,7 +43,7 @@ pub fn run_gui(cfg: AiConfig) -> Result<()> {
         "Snake Lab Rust",
         options,
         Box::new(move |cc| {
-            cc.egui_ctx.style_mut(|style| {
+            cc.egui_ctx.style_mut_of(egui::Theme::Dark, |style| {
                 style.visuals = egui::Visuals::dark();
 
                 // --- Modern Dark Palette ---

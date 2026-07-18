@@ -173,6 +173,7 @@ impl TranspositionTable {
     }
 
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     pub fn set(&self, hash: u64, depth: usize, score: i32, flag: u8, mv_x: u8, mv_y: u8, mv_dir: u8) {
         let idx = (hash as usize) & self.mask;
         let slot = unsafe { self.entries.get_unchecked(idx) };

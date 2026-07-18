@@ -72,8 +72,7 @@ fn sample_single_unoccupied<R: RngSource>(rng: &mut R, width: i32, height: i32, 
 }
 
 fn collect_unoccupied_points(width: i32, height: i32, occupied: &[bool]) -> Vec<Point> {
-    let mut points = Vec::new();
-    points.reserve(occupied.len());
+    let mut points = Vec::with_capacity(occupied.len());
 
     for y in 0..height {
         for x in 0..width {

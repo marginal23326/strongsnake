@@ -111,7 +111,7 @@ where
 
         let snapshot_path = snapshot_path_for_mode(&options.snapshot_file, *mode, options.find_modes.len() > 1);
         let snapshot_file = if let Some(trace) = find_traces.get(&candidate.result.seed) {
-            if let Some(snapshot) = build_snapshot(&trace, options.snapshot_ticks, options.width, options.height) {
+            if let Some(snapshot) = build_snapshot(trace, options.snapshot_ticks, options.width, options.height) {
                 write_snapshot(&snapshot_path, &snapshot)?;
                 Some(display_path(&snapshot_path))
             } else {

@@ -144,7 +144,7 @@ impl SnakeGuiApp {
     }
 
     pub(super) fn process_playground_keys(&mut self, ctx: &egui::Context) {
-        if self.tab != Tab::Playground || ctx.wants_keyboard_input() {
+        if self.tab != Tab::Playground || ctx.egui_wants_keyboard_input() {
             return;
         }
 

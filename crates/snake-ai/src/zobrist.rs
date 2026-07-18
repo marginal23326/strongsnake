@@ -20,9 +20,10 @@ impl Zobrist {
         }
 
         let mut health = [[0u64; 101]; 2];
-        for i in 0..=100 {
-            health[0][i] = splitmix64(&mut seed);
-            health[1][i] = splitmix64(&mut seed);
+        let (row0, row1) = health.split_at_mut(1);
+        for (h0, h1) in row0[0].iter_mut().zip(row1[0].iter_mut()) {
+            *h0 = splitmix64(&mut seed);
+            *h1 = splitmix64(&mut seed);
         }
 
         Self {
@@ -35,7 +36,7 @@ impl Zobrist {
 
     pub fn compute_hash<const N: usize>(&self, grid: &Grid<N>, my_health: i32, enemy_health: i32) -> u64
     where
-        [(); (N + 63) / 64]: Sized,
+        [(); N.div_ceil(64)]: Sized,
     {
         let mut h = 0u64;
         let mut xor_bits = |bb: crate::bitboard::BitBoard<N>, piece: usize| {

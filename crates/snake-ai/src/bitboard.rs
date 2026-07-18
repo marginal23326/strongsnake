@@ -4,14 +4,14 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, N
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BitBoard<const N: usize>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
-    pub words: [u64; (N + 63) / 64],
+    pub words: [u64; N.div_ceil(64)],
 }
 
 impl<const N: usize> Default for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[inline(always)]
     fn default() -> Self {
@@ -21,13 +21,15 @@ where
 
 impl<const N: usize> BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
-    pub const NUM_WORDS: usize = (N + 63) / 64;
+    pub const NUM_WORDS: usize = N.div_ceil(64);
 
     #[inline(always)]
     pub const fn empty() -> Self {
-        Self { words: [0; (N + 63) / 64] }
+        Self {
+            words: [0; N.div_ceil(64)],
+        }
     }
 
     #[inline(always)]
@@ -106,7 +108,7 @@ where
 
 impl<const N: usize> fmt::Debug for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BitBoard(")?;
@@ -121,7 +123,7 @@ where
 
 impl<const N: usize> Not for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     type Output = Self;
     #[inline(always)]
@@ -136,7 +138,7 @@ where
 
 impl<const N: usize> BitAnd for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     type Output = Self;
     #[inline(always)]
@@ -151,7 +153,7 @@ where
 
 impl<const N: usize> BitAndAssign for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[inline(always)]
     fn bitand_assign(&mut self, rhs: Self) {
@@ -163,7 +165,7 @@ where
 
 impl<const N: usize> BitOr for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     type Output = Self;
     #[inline(always)]
@@ -178,7 +180,7 @@ where
 
 impl<const N: usize> BitOrAssign for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[inline(always)]
     fn bitor_assign(&mut self, rhs: Self) {
@@ -190,7 +192,7 @@ where
 
 impl<const N: usize> BitXor for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     type Output = Self;
     #[inline(always)]
@@ -205,7 +207,7 @@ where
 
 impl<const N: usize> BitXorAssign for BitBoard<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     #[inline(always)]
     fn bitxor_assign(&mut self, rhs: Self) {
@@ -220,7 +222,7 @@ where
 #[derive(Clone)]
 pub struct SearchContext<const N: usize>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     pub width: u8,
     pub height: u8,
@@ -231,7 +233,7 @@ where
 
 impl<const N: usize> SearchContext<N>
 where
-    [(); (N + 63) / 64]: Sized,
+    [(); N.div_ceil(64)]: Sized,
 {
     pub fn new(width: i32, height: i32) -> Self {
         assert!((width * height) as usize <= N, "Board too large for bitset");
