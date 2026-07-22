@@ -272,6 +272,11 @@ impl SnakeGuiApp {
             }
         }
 
+        snakes.sort_by(|a, b| {
+            let ord = |id: &str| if id == "s1" { 0 } else { 1 };
+            ord(&a.id.0).cmp(&ord(&b.id.0))
+        });
+
         Some(snake_domain::GameState {
             turn: 0,
             seed: 0,
