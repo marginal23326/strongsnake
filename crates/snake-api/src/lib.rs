@@ -89,7 +89,13 @@ fn parse_legacy(body: &Value) -> Result<ParsedMoveRequest> {
     let snakes_node = body.get("snakes").unwrap_or(&Value::Null);
     let you_node = body.get("you").unwrap_or(&Value::Null);
 
-    let food_points = parse_points(&clean_list(food_node));
+    let food_points: Vec<Point> = parse_points(&clean_list(food_node))
+        .into_iter()
+        .map(|p| Point {
+            x: p.x,
+            y: invert_y(p.y, height),
+        })
+        .collect();
     let snakes = parse_legacy_snakes(&clean_list(snakes_node), height);
     let you_id = clean_object(you_node).get("id").and_then(Value::as_str).unwrap_or("you").to_owned();
 
