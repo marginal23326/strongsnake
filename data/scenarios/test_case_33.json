@@ -3,8 +3,11 @@
   "name": "Imported Test 33",
   "you_id": "me",
   "expectation": {
-    "kind": "exact",
-    "direction": "down"
+    "kind": "avoid",
+    "directions": [
+      "up",
+      "left"
+    ]
   },
   "board": {
     "width": 11,
