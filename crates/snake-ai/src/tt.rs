@@ -189,7 +189,7 @@ impl TranspositionTable {
             }
         }
 
-        let depth_u8 = depth as u8;
+        let depth_u8 = depth.min(255) as u8;
         unsafe {
             let curr = &mut *slot.entry.get();
             if curr.generation != self.generation || curr.key != hash || depth_u8 >= curr.depth {

@@ -50,7 +50,7 @@ pub struct RegressionOptions {
 }
 
 impl RegressionOptions {
-    pub const DEFAULT_DEPTHS_RAW: &'static str = "6";
+    pub const DEFAULT_DEPTHS_RAW: &'static str = "3";
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -138,7 +138,7 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
 
     for depth in depths {
         if options.output.show_headers() {
-            println!("=== DEPTH {depth} ===");
+            println!("=== DEPTH {depth} ({} plies) ===", depth * 2);
         }
         cfg.max_depth = depth;
 

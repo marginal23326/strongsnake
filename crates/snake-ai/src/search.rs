@@ -483,7 +483,7 @@ where
                 enemy,
                 SearchFrame {
                     dist_map,
-                    depth: 1,
+                    depth: 2,
                     alpha,
                     beta,
                     side,
@@ -733,7 +733,7 @@ where
 
             // LMR
             if depth >= 5 && !ate_food && collision_penalty == 0 && kill_threat_bonus == 0 {
-                let r = 1;
+                let r = 2;
 
                 let child_lmr = negamax(
                     grid,

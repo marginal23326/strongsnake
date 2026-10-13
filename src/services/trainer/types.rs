@@ -51,7 +51,7 @@ impl TrainerOptions {
     pub const DEFAULT_GENS: usize = 25;
     pub const DEFAULT_ELITE: usize = 4;
     pub const DEFAULT_GAMES: usize = 5;
-    pub const DEFAULT_DEPTH: usize = 6;
+    pub const DEFAULT_DEPTH: usize = 3;
     pub const DEFAULT_WIDTH: i32 = 16;
     pub const DEFAULT_HEIGHT: i32 = 9;
     pub const DEFAULT_MAX_TURNS: u32 = 500;
@@ -78,11 +78,11 @@ impl TrainerOptions {
     pub const DEFAULT_PROGRESS: usize = 0;
     pub const DEFAULT_PROGRESS_EVERY: usize = 1;
     pub const DEFAULT_VERIFY: bool = true;
-    pub const DEFAULT_VERIFY_DEPTHS_RAW: &'static str = "4,5,6";
+    pub const DEFAULT_VERIFY_DEPTHS_RAW: &'static str = "2,3";
     pub const DEFAULT_VERIFY_MAX_ATTEMPTS: usize = 800;
     pub const DEFAULT_HTTP_API_RAW: &'static str = "auto";
     pub const DEFAULT_LEGACY_HTTP: bool = false;
-    pub const DEFAULT_VERIFY_DEPTHS: [usize; 3] = [4, 5, 6];
+    pub const DEFAULT_VERIFY_DEPTHS: [usize; 2] = [2, 3];
 }
 
 impl Default for TrainerOptions {

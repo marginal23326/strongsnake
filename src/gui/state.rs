@@ -125,7 +125,7 @@ impl SnakeGuiApp {
             save_error: None,
             save_success: None,
             scenario_dir: scenario_dir.display().to_string(),
-            depths: "6".to_owned(),
+            depths: "3".to_owned(),
             regression_repeat: 1,
             arena_games: 10,
             arena_seed: 1,

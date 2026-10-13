@@ -45,8 +45,8 @@ fn get_worker_pool() -> &'static Mutex<WorkerPool> {
     WORKER_POOL.get_or_init(|| Mutex::new(WorkerPool::new()))
 }
 
-fn depth_based_tt_entries(max_depth: usize) -> usize {
-    match max_depth {
+fn depth_based_tt_entries(plies: usize) -> usize {
+    match plies {
         0..=4 => 1 << 15,   // 32k entries (~2MB)
         5..=8 => 1 << 17,   // 128k entries (~8MB)
         9..=12 => 1 << 19,  // 512k entries (~32MB)
@@ -62,7 +62,7 @@ fn resolve_tt_entries(cfg: &AiConfig) -> usize {
             return entries;
         }
     }
-    depth_based_tt_entries(cfg.max_depth)
+    depth_based_tt_entries(cfg.search_plies())
 }
 
 fn resolve_thread_count(cfg: &AiConfig) -> usize {
@@ -137,6 +137,7 @@ where
     zobrist: Arc<Zobrist>,
     initial_hash: u64,
     grid_size: usize,
+    plies: usize,
 }
 
 struct WorkerResult {
@@ -251,7 +252,7 @@ where
 
     let tt_guard = get_tt().read().unwrap();
     let mut search_ctx = SearchContext {
-        root_depth: task.cfg.max_depth,
+        root_depth: task.plies,
         collect_root_children: task.build_debug && thread_id == 0,
         history_table: history,
         cfg: &task.cfg,
@@ -268,7 +269,7 @@ where
         &mut task.enemy,
         SearchFrame {
             dist_map: Some(task.dist_map.as_ref()),
-            depth: task.cfg.max_depth,
+            depth: task.plies,
             alpha: -2_000_000_000,
             beta: 2_000_000_000,
             side: 0,
@@ -430,6 +431,7 @@ where
 
     prepare_tt_for_search(cfg);
     let num_threads = resolve_thread_count(cfg);
+    let plies = cfg.search_plies();
     let base_task = SearchTask {
         build_debug,
         grid: grid.clone(),
@@ -440,6 +442,7 @@ where
         zobrist: zobrist.clone(),
         initial_hash,
         grid_size,
+        plies,
     };
 
     let (primary_res, mut aggregated_stats) = if num_threads <= 1 {
@@ -472,7 +475,7 @@ where
                 enemy.clone(),
                 initial_hash,
                 root_move,
-                cfg.max_depth,
+                plies,
                 &tt_guard,
                 zobrist.as_ref(),
             )

@@ -51,7 +51,7 @@ impl SnakeGuiApp {
 
                     ui.separator();
                     ui.label("AI Depth:");
-                    ui.add(egui::DragValue::new(&mut self.playground_depth).range(1..=64));
+                    ui.add(egui::DragValue::new(&mut self.playground_depth).range(1..=32));
 
                     ui.separator();
                     ui.label("P1 Move:");
