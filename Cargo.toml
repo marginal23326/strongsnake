@@ -23,7 +23,6 @@ anyhow = "1.0.103"
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "tracing"] }
 clap = { version = "4.6.1", features = ["derive"] }
 eframe = { version = "0.35.0", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
-egui_plot = "0.35.0"
 rand = "0.10.2"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }
