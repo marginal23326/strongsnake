@@ -5,8 +5,7 @@
   "expectation": {
     "kind": "avoid",
     "directions": [
-      "down",
-      "left"
+      "down"
     ]
   },
   "board": {
