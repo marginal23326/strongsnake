@@ -320,10 +320,8 @@ fn apply_search_move<const W: usize, const N: usize>(
             if original_tail_val == cell_id {
                 unsafe {
                     grid.clear_unchecked(tail.x, tail.y, original_tail_val);
+                    next_hash = zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
                 }
-            }
-            unsafe {
-                next_hash = zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
             }
         }
     }
@@ -639,11 +637,9 @@ pub fn negamax<const W: usize, const N: usize>(
                 if original_tail_val == cell_id {
                     unsafe {
                         grid.clear_unchecked(tail.x, tail.y, original_tail_val);
+                        next_hash = ctx.zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
                     }
                     tail_restore = Some((tail.x, tail.y, original_tail_val));
-                }
-                unsafe {
-                    next_hash = ctx.zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
                 }
             }
         }
