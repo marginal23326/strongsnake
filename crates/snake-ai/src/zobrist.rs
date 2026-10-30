@@ -34,13 +34,10 @@ impl Zobrist {
         }
     }
 
-    pub fn compute_hash<const N: usize>(&self, grid: &Grid<N>, my_health: i32, enemy_health: i32) -> u64
-    where
-        [(); N.div_ceil(64)]: Sized,
-    {
+    pub fn compute_hash<const W: usize, const N: usize>(&self, grid: &Grid<W, N>, my_health: i32, enemy_health: i32) -> u64 {
         let mut h = 0u64;
-        let mut xor_bits = |bb: crate::bitboard::BitBoard<N>, piece: usize| {
-            for i in 0..crate::bitboard::BitBoard::<N>::NUM_WORDS {
+        let mut xor_bits = |bb: crate::bitboard::BitBoard<W, N>, piece: usize| {
+            for i in 0..W {
                 let mut val = bb.words[i];
                 while val != 0 {
                     let bit = val.trailing_zeros();

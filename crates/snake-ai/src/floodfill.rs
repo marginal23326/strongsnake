@@ -9,8 +9,8 @@ pub struct FloodFillResult {
     pub has_food: bool,
 }
 
-pub fn flood_fill<const N: usize>(
-    grid: &Grid<N>,
+pub fn flood_fill<const W: usize, const N: usize>(
+    grid: &Grid<W, N>,
     start_x: i32,
     start_y: i32,
     max_depth: i32,
@@ -18,8 +18,6 @@ pub fn flood_fill<const N: usize>(
     enemy_body: Option<&FastBody>,
     _buffers: &mut SearchBuffers,
 ) -> FloodFillResult
-where
-    [(); N.div_ceil(64)]: Sized,
 {
     #[cfg(feature = "profiling")]
     {
@@ -38,16 +36,14 @@ where
     }
 }
 
-fn flood_fill_inner<const N: usize>(
-    grid: &Grid<N>,
+fn flood_fill_inner<const W: usize, const N: usize>(
+    grid: &Grid<W, N>,
     start_x: i32,
     start_y: i32,
     max_depth: i32,
     my_body: Option<&FastBody>,
     enemy_body: Option<&FastBody>,
 ) -> FloodFillResult
-where
-    [(); N.div_ceil(64)]: Sized,
 {
     if start_x < 0 || start_y < 0 || start_x >= grid.width || start_y >= grid.height {
         return FloodFillResult {

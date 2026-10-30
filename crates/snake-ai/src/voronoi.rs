@@ -9,9 +9,7 @@ pub struct VoronoiResult {
     pub enemy_count: i32,
 }
 
-pub fn compute_voronoi<const N: usize>(grid: &Grid<N>, my_head: Point, enemy_head: Point, _buffers: &mut SearchBuffers) -> VoronoiResult
-where
-    [(); N.div_ceil(64)]: Sized,
+pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point, _buffers: &mut SearchBuffers) -> VoronoiResult
 {
     #[cfg(feature = "profiling")]
     {
@@ -30,15 +28,13 @@ where
     }
 }
 
-fn compute_voronoi_inner<const N: usize>(grid: &Grid<N>, my_head: Point, enemy_head: Point) -> VoronoiResult
-where
-    [(); N.div_ceil(64)]: Sized,
+fn compute_voronoi_inner<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point) -> VoronoiResult
 {
-    let mut my_front = BitBoard::<N>::with_bit(grid.idx(my_head.x, my_head.y));
-    let mut en_front = BitBoard::<N>::with_bit(grid.idx(enemy_head.x, enemy_head.y));
+    let mut my_front = BitBoard::<W, N>::with_bit(grid.idx(my_head.x, my_head.y));
+    let mut en_front = BitBoard::<W, N>::with_bit(grid.idx(enemy_head.x, enemy_head.y));
 
-    let mut my_territory = BitBoard::<N>::empty();
-    let mut en_territory = BitBoard::<N>::empty();
+    let mut my_territory = BitBoard::<W, N>::empty();
+    let mut en_territory = BitBoard::<W, N>::empty();
 
     let mut visited = my_front | en_front | !grid.safe_cells();
     let ctx = &grid.ctx;

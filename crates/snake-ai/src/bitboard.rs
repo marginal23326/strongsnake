@@ -2,33 +2,24 @@ use std::fmt;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct BitBoard<const N: usize>
-where
-    [(); N.div_ceil(64)]: Sized,
-{
-    pub words: [u64; N.div_ceil(64)],
+pub struct BitBoard<const W: usize, const N: usize> {
+    pub words: [u64; W],
 }
 
-impl<const N: usize> Default for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
-{
+impl<const W: usize, const N: usize> Default for BitBoard<W, N> {
     #[inline(always)]
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl<const N: usize> BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
-{
-    pub const NUM_WORDS: usize = N.div_ceil(64);
+impl<const W: usize, const N: usize> BitBoard<W, N> {
+    pub const NUM_WORDS: usize = W;
 
     #[inline(always)]
     pub const fn empty() -> Self {
         Self {
-            words: [0; N.div_ceil(64)],
+            words: [0; W],
         }
     }
 
@@ -106,9 +97,7 @@ where
     }
 }
 
-impl<const N: usize> fmt::Debug for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> fmt::Debug for BitBoard<W, N>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BitBoard(")?;
@@ -121,9 +110,7 @@ where
 
 // --- Dynamic Unrolled Bitwise Ops ---
 
-impl<const N: usize> Not for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> Not for BitBoard<W, N>
 {
     type Output = Self;
     #[inline(always)]
@@ -136,9 +123,7 @@ where
     }
 }
 
-impl<const N: usize> BitAnd for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> BitAnd for BitBoard<W, N>
 {
     type Output = Self;
     #[inline(always)]
@@ -151,9 +136,7 @@ where
     }
 }
 
-impl<const N: usize> BitAndAssign for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> BitAndAssign for BitBoard<W, N>
 {
     #[inline(always)]
     fn bitand_assign(&mut self, rhs: Self) {
@@ -163,9 +146,7 @@ where
     }
 }
 
-impl<const N: usize> BitOr for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> BitOr for BitBoard<W, N>
 {
     type Output = Self;
     #[inline(always)]
@@ -178,9 +159,7 @@ where
     }
 }
 
-impl<const N: usize> BitOrAssign for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> BitOrAssign for BitBoard<W, N>
 {
     #[inline(always)]
     fn bitor_assign(&mut self, rhs: Self) {
@@ -190,9 +169,7 @@ where
     }
 }
 
-impl<const N: usize> BitXor for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> BitXor for BitBoard<W, N>
 {
     type Output = Self;
     #[inline(always)]
@@ -205,9 +182,7 @@ where
     }
 }
 
-impl<const N: usize> BitXorAssign for BitBoard<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> BitXorAssign for BitBoard<W, N>
 {
     #[inline(always)]
     fn bitxor_assign(&mut self, rhs: Self) {
@@ -220,20 +195,16 @@ where
 // --- Search Context (Precalculated Masks) ---
 
 #[derive(Clone)]
-pub struct SearchContext<const N: usize>
-where
-    [(); N.div_ceil(64)]: Sized,
+pub struct SearchContext<const W: usize, const N: usize>
 {
     pub width: u8,
     pub height: u8,
-    pub valid_cells: BitBoard<N>,
-    pub not_left_edge: BitBoard<N>,
-    pub not_right_edge: BitBoard<N>,
+    pub valid_cells: BitBoard<W, N>,
+    pub not_left_edge: BitBoard<W, N>,
+    pub not_right_edge: BitBoard<W, N>,
 }
 
-impl<const N: usize> SearchContext<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> SearchContext<W, N>
 {
     pub fn new(width: i32, height: i32) -> Self {
         assert!((width * height) as usize <= N, "Board too large for bitset");
@@ -261,9 +232,9 @@ where
     }
 
     #[inline(always)]
-    pub fn up(&self, b: BitBoard<N>) -> BitBoard<N> {
+    pub fn up(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         let mut ret = BitBoard::empty();
-        if BitBoard::<N>::NUM_WORDS == 2 {
+        if BitBoard::<W, N>::NUM_WORDS == 2 {
             unsafe {
                 let x = std::mem::transmute_copy::<[u64; 2], u128>(&[b.words[0], b.words[1]]);
                 let split: [u64; 2] = std::mem::transmute(x << self.width);
@@ -273,7 +244,7 @@ where
         } else {
             let shift = self.width as usize;
             let inv = 64 - shift;
-            for i in (1..BitBoard::<N>::NUM_WORDS).rev() {
+            for i in (1..BitBoard::<W, N>::NUM_WORDS).rev() {
                 ret.words[i] = (b.words[i] << shift) | (b.words[i - 1] >> inv);
             }
             ret.words[0] = b.words[0] << shift;
@@ -282,9 +253,9 @@ where
     }
 
     #[inline(always)]
-    pub fn down(&self, b: BitBoard<N>) -> BitBoard<N> {
+    pub fn down(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         let mut ret = BitBoard::empty();
-        if BitBoard::<N>::NUM_WORDS == 2 {
+        if BitBoard::<W, N>::NUM_WORDS == 2 {
             unsafe {
                 let x = std::mem::transmute_copy::<[u64; 2], u128>(&[b.words[0], b.words[1]]);
                 let split: [u64; 2] = std::mem::transmute(x >> self.width);
@@ -294,19 +265,19 @@ where
         } else {
             let shift = self.width as usize;
             let inv = 64 - shift;
-            for i in 0..(BitBoard::<N>::NUM_WORDS - 1) {
+            for i in 0..(BitBoard::<W, N>::NUM_WORDS - 1) {
                 ret.words[i] = (b.words[i] >> shift) | (b.words[i + 1] << inv);
             }
-            ret.words[BitBoard::<N>::NUM_WORDS - 1] = b.words[BitBoard::<N>::NUM_WORDS - 1] >> shift;
+            ret.words[BitBoard::<W, N>::NUM_WORDS - 1] = b.words[BitBoard::<W, N>::NUM_WORDS - 1] >> shift;
         }
         ret & self.valid_cells
     }
 
     #[inline(always)]
-    pub fn left(&self, b: BitBoard<N>) -> BitBoard<N> {
+    pub fn left(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         let masked = b & self.not_left_edge;
         let mut ret = BitBoard::empty();
-        if BitBoard::<N>::NUM_WORDS == 2 {
+        if BitBoard::<W, N>::NUM_WORDS == 2 {
             unsafe {
                 let x = std::mem::transmute_copy::<[u64; 2], u128>(&[masked.words[0], masked.words[1]]);
                 let split: [u64; 2] = std::mem::transmute(x >> 1);
@@ -314,19 +285,19 @@ where
                 ret.words[1] = split[1];
             }
         } else {
-            for i in 0..(BitBoard::<N>::NUM_WORDS - 1) {
+            for i in 0..(BitBoard::<W, N>::NUM_WORDS - 1) {
                 ret.words[i] = (masked.words[i] >> 1) | (masked.words[i + 1] << 63);
             }
-            ret.words[BitBoard::<N>::NUM_WORDS - 1] = masked.words[BitBoard::<N>::NUM_WORDS - 1] >> 1;
+            ret.words[BitBoard::<W, N>::NUM_WORDS - 1] = masked.words[BitBoard::<W, N>::NUM_WORDS - 1] >> 1;
         }
         ret
     }
 
     #[inline(always)]
-    pub fn right(&self, b: BitBoard<N>) -> BitBoard<N> {
+    pub fn right(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         let masked = b & self.not_right_edge;
         let mut ret = BitBoard::empty();
-        if BitBoard::<N>::NUM_WORDS == 2 {
+        if BitBoard::<W, N>::NUM_WORDS == 2 {
             unsafe {
                 let x = std::mem::transmute_copy::<[u64; 2], u128>(&[masked.words[0], masked.words[1]]);
                 let split: [u64; 2] = std::mem::transmute(x << 1);
@@ -334,7 +305,7 @@ where
                 ret.words[1] = split[1];
             }
         } else {
-            for i in (1..BitBoard::<N>::NUM_WORDS).rev() {
+            for i in (1..BitBoard::<W, N>::NUM_WORDS).rev() {
                 ret.words[i] = (masked.words[i] << 1) | (masked.words[i - 1] >> 63);
             }
             ret.words[0] = masked.words[0] << 1;
@@ -343,7 +314,7 @@ where
     }
 
     #[inline(always)]
-    pub fn expand_neighbors(&self, b: BitBoard<N>) -> BitBoard<N> {
+    pub fn expand_neighbors(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         self.up(b) | self.down(b) | self.left(b) | self.right(b)
     }
 }

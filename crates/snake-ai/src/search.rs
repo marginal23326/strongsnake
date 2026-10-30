@@ -79,9 +79,7 @@ impl MoveList {
     }
 }
 
-fn get_safe_neighbors<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &AgentState) -> MoveList
-where
-    [(); N.div_ceil(64)]: Sized,
+fn get_safe_neighbors<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState) -> MoveList
 {
     #[cfg(feature = "profiling")]
     {
@@ -100,9 +98,7 @@ where
     }
 }
 
-fn get_safe_neighbors_inner<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &AgentState) -> MoveList
-where
-    [(); N.div_ceil(64)]: Sized,
+fn get_safe_neighbors_inner<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState) -> MoveList
 {
     let mut list = MoveList::new();
     let my_body = &me.body;
@@ -241,9 +237,7 @@ fn root_tie_breaker(me: &AgentState, enemy: &AgentState, cols: i32, rows: i32, m
     tail_bias + head_contact_bias - move_into_enemy_tail_penalty
 }
 
-fn should_extend_leaf<const N: usize>(grid: &Grid<N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> bool
-where
-    [(); N.div_ceil(64)]: Sized,
+fn should_extend_leaf<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> bool
 {
     let my_len = me.body.len();
     let enemy_len = enemy.body.len();
@@ -276,16 +270,14 @@ fn direction_index(dir: Direction) -> usize {
 }
 
 #[inline(always)]
-fn apply_search_move<const N: usize>(
-    grid: &mut Grid<N>,
+fn apply_search_move<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
     me: &mut AgentState,
     side: usize,
     mv: SearchMove,
     zobrist: &Zobrist,
     current_hash: u64,
 ) -> Option<u64>
-where
-    [(); N.div_ceil(64)]: Sized,
 {
     if me.body.is_empty() {
         return None;
@@ -344,8 +336,8 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn reconstruct_pv<const N: usize>(
-    mut grid: Grid<N>,
+pub fn reconstruct_pv<const W: usize, const N: usize>(
+    mut grid: Grid<W, N>,
     mut me: AgentState,
     mut enemy: AgentState,
     root_hash: u64,
@@ -354,8 +346,6 @@ pub fn reconstruct_pv<const N: usize>(
     tt: &TranspositionTable,
     zobrist: &Zobrist,
 ) -> Vec<Direction>
-where
-    [(); N.div_ceil(64)]: Sized,
 {
     if max_depth == 0 {
         return Vec::new();
@@ -410,15 +400,13 @@ where
     pv
 }
 
-pub fn negamax<const N: usize>(
-    grid: &mut Grid<N>,
+pub fn negamax<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
     me: &mut AgentState,
     enemy: &mut AgentState,
     frame: SearchFrame<'_>,
     ctx: &mut SearchContext<'_>,
 ) -> SearchResult
-where
-    [(); N.div_ceil(64)]: Sized,
 {
     let SearchFrame {
         dist_map,

@@ -124,12 +124,9 @@ fn accumulate_perf_stats(total: &mut crate::PerfStats, stats: &crate::PerfStats)
 }
 
 #[derive(Clone)]
-struct SearchTask<const N: usize>
-where
-    [(); N.div_ceil(64)]: Sized,
-{
+struct SearchTask<const W: usize, const N: usize> {
     build_debug: bool,
-    grid: Grid<N>,
+    grid: Grid<W, N>,
     me: AgentState,
     enemy: AgentState,
     dist_map: Arc<[i16]>,
@@ -236,15 +233,12 @@ fn reset_worker_state(history: &mut [Vec<i32>; 2], grid_size: usize) {
     }
 }
 
-fn execute_search_task<const N: usize>(
+fn execute_search_task<const W: usize, const N: usize>(
     thread_id: usize,
-    mut task: SearchTask<N>,
+    mut task: SearchTask<W, N>,
     history: &mut [Vec<i32>; 2],
     buffers: &mut SearchBuffers,
-) -> WorkerResult
-where
-    [(); N.div_ceil(64)]: Sized,
-{
+) -> WorkerResult {
     crate::PERF_STATS.with(|s| *s.borrow_mut() = crate::PerfStats::default());
 
     reset_worker_state(history, task.grid_size);
@@ -307,10 +301,7 @@ fn worker_loop(thread_id: usize, rx: mpsc::Receiver<WorkerCommand>) {
     }
 }
 
-fn fallback_move<const N: usize>(grid: &Grid<N>, me: &AgentState, buffers: &mut SearchBuffers) -> Direction
-where
-    [(); N.div_ceil(64)]: Sized,
-{
+fn fallback_move<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, buffers: &mut SearchBuffers) -> Direction {
     if me.body.is_empty() {
         return Direction::Up;
     }
@@ -343,9 +334,9 @@ trait IntoWorkerTask {
 }
 
 macro_rules! build_worker_tasks {
-    ($( $name:ident => $n:literal ),* $(,)?) => {
+    ($( $name:ident => ($w:literal, $n:literal) ),* $(,)?) => {
         enum WorkerTask {
-            $( $name(SearchTask<$n>), )*
+            $( $name(SearchTask<$w, $n>), )*
         }
 
         impl Clone for WorkerTask {
@@ -357,7 +348,7 @@ macro_rules! build_worker_tasks {
         }
 
         $(
-            impl IntoWorkerTask for SearchTask<$n> {
+            impl IntoWorkerTask for SearchTask<$w, $n> {
                 fn into_worker_task(self) -> WorkerTask {
                     WorkerTask::$name(self)
                 }
@@ -367,13 +358,13 @@ macro_rules! build_worker_tasks {
 }
 
 build_worker_tasks! {
-    // Task64 => 64,
-    Task128 => 128,
-    Task192 => 192,
-    // Task256 => 256,
-    // Task320 => 320,
-    // Task384 => 384,
-    Task448 => 448,
+    // Task64 => (1, 64),
+    Task128 => (2, 128),
+    Task192 => (3, 192),
+    // Task256 => (4, 256),
+    // Task320 => (5, 320),
+    // Task384 => (6, 384),
+    Task448 => (7, 448),
 }
 
 pub fn decide_move(me: AgentState, enemy: AgentState, foods: &[Point], cols: i32, rows: i32, cfg: &AiConfig) -> Decision {
@@ -397,13 +388,13 @@ fn decide_move_with_options(
     let required_words = area.div_ceil(64);
 
     match required_words {
-        0..=2 => decide_move_inner::<128>(me, enemy, foods, cols, rows, cfg, build_debug),
-        3 => decide_move_inner::<192>(me, enemy, foods, cols, rows, cfg, build_debug),
-        _ => decide_move_inner::<448>(me, enemy, foods, cols, rows, cfg, build_debug),
+        0..=2 => decide_move_inner::<2, 128>(me, enemy, foods, cols, rows, cfg, build_debug),
+        3 => decide_move_inner::<3, 192>(me, enemy, foods, cols, rows, cfg, build_debug),
+        _ => decide_move_inner::<7, 448>(me, enemy, foods, cols, rows, cfg, build_debug),
     }
 }
 
-fn decide_move_inner<const N: usize>(
+fn decide_move_inner<const W: usize, const N: usize>(
     me: AgentState,
     enemy: AgentState,
     foods: &[Point],
@@ -413,13 +404,12 @@ fn decide_move_inner<const N: usize>(
     build_debug: bool,
 ) -> Decision
 where
-    [(); N.div_ceil(64)]: Sized,
-    SearchTask<N>: IntoWorkerTask,
+    SearchTask<W, N>: IntoWorkerTask,
 {
     crate::PERF_STATS.with(|s| *s.borrow_mut() = crate::PerfStats::default());
 
     let started = Instant::now();
-    let grid = Grid::<N>::from_state(cols, rows, foods, &me.body, &enemy.body);
+    let grid = Grid::<W, N>::from_state(cols, rows, foods, &me.body, &enemy.body);
     let dist_map = Arc::<[i16]>::from(get_food_distance_map(&grid));
 
     let pre_worker_stats = crate::PERF_STATS.with(|s| *s.borrow());

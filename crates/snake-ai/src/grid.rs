@@ -2,21 +2,17 @@ use crate::bitboard::{BitBoard, SearchContext};
 use snake_domain::Point;
 
 #[derive(Clone)]
-pub struct Grid<const N: usize>
-where
-    [(); N.div_ceil(64)]: Sized,
+pub struct Grid<const W: usize, const N: usize>
 {
     pub width: i32,
     pub height: i32,
-    pub ctx: SearchContext<N>,
-    pub food: BitBoard<N>,
-    pub my_body: BitBoard<N>,
-    pub enemy_body: BitBoard<N>,
+    pub ctx: SearchContext<W, N>,
+    pub food: BitBoard<W, N>,
+    pub my_body: BitBoard<W, N>,
+    pub enemy_body: BitBoard<W, N>,
 }
 
-impl<const N: usize> Grid<N>
-where
-    [(); N.div_ceil(64)]: Sized,
+impl<const W: usize, const N: usize> Grid<W, N>
 {
     pub fn new(width: i32, height: i32) -> Self {
         if (width * height) as usize > N {
@@ -121,12 +117,12 @@ where
     }
 
     #[inline(always)]
-    pub fn occupied(&self) -> BitBoard<N> {
+    pub fn occupied(&self) -> BitBoard<W, N> {
         self.my_body | self.enemy_body
     }
 
     #[inline(always)]
-    pub fn safe_cells(&self) -> BitBoard<N> {
+    pub fn safe_cells(&self) -> BitBoard<W, N> {
         self.ctx.valid_cells & !self.occupied()
     }
 

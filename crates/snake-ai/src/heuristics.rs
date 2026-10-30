@@ -13,16 +13,14 @@ fn manhattan(a: Point, b: Point) -> i32 {
     (a.x - b.x).abs() + (a.y - b.y).abs()
 }
 
-pub fn evaluate<const N: usize>(
-    grid: &mut Grid<N>,
+pub fn evaluate<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
     me: &AgentState,
     enemy: &AgentState,
     dist_map: Option<&[i16]>,
     cfg: &AiConfig,
     buffers: &mut SearchBuffers,
 ) -> i32
-where
-    [(); N.div_ceil(64)]: Sized,
 {
     #[cfg(feature = "profiling")]
     {
@@ -41,16 +39,14 @@ where
     }
 }
 
-fn evaluate_inner<const N: usize>(
-    grid: &mut Grid<N>,
+fn evaluate_inner<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
     me: &AgentState,
     enemy: &AgentState,
     dist_map: Option<&[i16]>,
     cfg: &AiConfig,
     buffers: &mut SearchBuffers,
 ) -> i32
-where
-    [(); N.div_ceil(64)]: Sized,
 {
     if me.health <= 0 || me.body.is_empty() {
         return cfg.scores.loss;

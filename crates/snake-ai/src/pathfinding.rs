@@ -1,8 +1,6 @@
 use crate::grid::Grid;
 
-pub fn get_food_distance_map<const N: usize>(grid: &Grid<N>) -> Vec<i16>
-where
-    [(); N.div_ceil(64)]: Sized,
+pub fn get_food_distance_map<const W: usize, const N: usize>(grid: &Grid<W, N>) -> Vec<i16>
 {
     #[cfg(feature = "profiling")]
     {
@@ -21,9 +19,7 @@ where
     }
 }
 
-fn get_food_distance_map_inner<const N: usize>(grid: &Grid<N>) -> Vec<i16>
-where
-    [(); N.div_ceil(64)]: Sized,
+fn get_food_distance_map_inner<const W: usize, const N: usize>(grid: &Grid<W, N>) -> Vec<i16>
 {
     let size = (grid.width * grid.height) as usize;
     let mut dist_map = vec![1000i16; size];
