@@ -269,6 +269,110 @@ fn direction_index(dir: Direction) -> usize {
     }
 }
 
+#[derive(Clone, Copy)]
+struct MoveUndo {
+    x: i32,
+    y: i32,
+    cell_id: i8,
+    original_head_val: i8,
+    old_health: i32,
+    popped_tail: Option<Point>,
+    tail_restore: Option<(i32, i32, i8)>,
+}
+
+impl MoveUndo {
+    #[inline(always)]
+    fn ate_food(&self) -> bool {
+        self.original_head_val == 1
+    }
+}
+
+#[inline(always)]
+fn make_move<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
+    me: &mut AgentState,
+    side: usize,
+    mv: SearchMove,
+    zobrist: &Zobrist,
+    current_hash: u64,
+) -> (u64, MoveUndo)
+{
+    let original_head_val = grid.get(mv.x, mv.y);
+    let ate_food = original_head_val == 1;
+    let old_health = me.health;
+    let ate_food_i32 = ate_food as i32;
+    let new_health = (old_health - 1) * (1 - ate_food_i32) + (100 * ate_food_i32);
+    let cell_id: i8 = 2 + side as i8;
+
+    let mut next_hash =
+        current_hash ^ zobrist.health[side][old_health.clamp(0, 100) as usize] ^ zobrist.health[side][new_health.clamp(0, 100) as usize];
+
+    me.health = new_health;
+    me.body.push_front(Point { x: mv.x, y: mv.y });
+
+    if original_head_val != 0 {
+        unsafe {
+            next_hash = zobrist.xor_unchecked(next_hash, mv.x, mv.y, original_head_val);
+        }
+    }
+    unsafe {
+        next_hash = zobrist.xor_unchecked(next_hash, mv.x, mv.y, cell_id);
+    }
+
+    let mut popped_tail = None;
+    let mut tail_restore = None;
+    if !ate_food {
+        let tail = me.body.pop_back();
+        popped_tail = Some(tail);
+
+        if tail.x != mv.x || tail.y != mv.y {
+            let original_tail_val = grid.get(tail.x, tail.y);
+            if original_tail_val == cell_id {
+                unsafe {
+                    grid.clear_unchecked(tail.x, tail.y, original_tail_val);
+                    next_hash = zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
+                }
+                tail_restore = Some((tail.x, tail.y, original_tail_val));
+            }
+        }
+    }
+
+    unsafe {
+        grid.replace_unchecked(mv.x, mv.y, original_head_val, cell_id);
+    }
+
+    (
+        next_hash,
+        MoveUndo {
+            x: mv.x,
+            y: mv.y,
+            cell_id,
+            original_head_val,
+            old_health,
+            popped_tail,
+            tail_restore,
+        },
+    )
+}
+
+#[inline(always)]
+fn unmake_move<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &mut AgentState, undo: MoveUndo) {
+    unsafe {
+        grid.replace_unchecked(undo.x, undo.y, undo.cell_id, undo.original_head_val);
+    }
+    if let Some((tx, ty, tv)) = undo.tail_restore {
+        unsafe {
+            grid.replace_unchecked(tx, ty, 0, tv);
+        }
+    }
+
+    me.body.pop_front();
+    if let Some(tail) = undo.popped_tail {
+        me.body.push_back(tail);
+    }
+    me.health = undo.old_health;
+}
+
 #[inline(always)]
 fn apply_search_move<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
@@ -292,45 +396,7 @@ fn apply_search_move<const W: usize, const N: usize>(
         return None;
     }
 
-    let original_head_val = grid.get(mv.x, mv.y);
-    let ate_food = original_head_val == 1;
-    let old_health = me.health;
-    let new_health = if ate_food { 100 } else { old_health - 1 };
-    let cell_id: i8 = 2 + side as i8;
-
-    let mut next_hash =
-        current_hash ^ zobrist.health[side][old_health.clamp(0, 100) as usize] ^ zobrist.health[side][new_health.clamp(0, 100) as usize];
-
-    me.health = new_health;
-    me.body.push_front(Point { x: mv.x, y: mv.y });
-
-    if original_head_val != 0 {
-        unsafe {
-            next_hash = zobrist.xor_unchecked(next_hash, mv.x, mv.y, original_head_val);
-        }
-    }
-    unsafe {
-        next_hash = zobrist.xor_unchecked(next_hash, mv.x, mv.y, cell_id);
-    }
-
-    if !ate_food {
-        let tail = me.body.pop_back();
-        if tail.x != mv.x || tail.y != mv.y {
-            let original_tail_val = grid.get(tail.x, tail.y);
-            if original_tail_val == cell_id {
-                unsafe {
-                    grid.clear_unchecked(tail.x, tail.y, original_tail_val);
-                    next_hash = zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
-                }
-            }
-        }
-    }
-
-    unsafe {
-        grid.replace_unchecked(mv.x, mv.y, original_head_val, cell_id);
-    }
-
-    Some(next_hash)
+    Some(make_move(grid, me, side, mv, zobrist, current_hash).0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -600,53 +666,8 @@ pub fn negamax<const W: usize, const N: usize>(
             0
         };
 
-        let original_head_val = grid.get(mv.x, mv.y);
-        let ate_food = original_head_val == 1;
-
-        let mut tail_restore: Option<(i32, i32, i8)> = None;
-        let mut popped_tail = None;
-
-        let mut next_hash = current_hash;
-        let old_health = me.health;
-
-        let ate_food_i32 = ate_food as i32;
-        let new_health = (old_health - 1) * (1 - ate_food_i32) + (100 * ate_food_i32);
-
-        me.health = new_health;
-        me.body.push_front(Point { x: mv.x, y: mv.y });
-
-        let cell_id: i8 = 2 + side as i8;
-
-        next_hash ^=
-            ctx.zobrist.health[side][old_health.clamp(0, 100) as usize] ^ ctx.zobrist.health[side][new_health.clamp(0, 100) as usize];
-        if original_head_val != 0 {
-            unsafe {
-                next_hash = ctx.zobrist.xor_unchecked(next_hash, mv.x, mv.y, original_head_val);
-            }
-        }
-        unsafe {
-            next_hash = ctx.zobrist.xor_unchecked(next_hash, mv.x, mv.y, cell_id);
-        }
-
-        if !ate_food {
-            let tail = me.body.pop_back();
-            popped_tail = Some(tail);
-
-            if tail.x != mv.x || tail.y != mv.y {
-                let original_tail_val = grid.get(tail.x, tail.y);
-                if original_tail_val == cell_id {
-                    unsafe {
-                        grid.clear_unchecked(tail.x, tail.y, original_tail_val);
-                        next_hash = ctx.zobrist.xor_unchecked(next_hash, tail.x, tail.y, cell_id);
-                    }
-                    tail_restore = Some((tail.x, tail.y, original_tail_val));
-                }
-            }
-        }
-
-        unsafe {
-            grid.replace_unchecked(mv.x, mv.y, original_head_val, cell_id);
-        }
+        let (next_hash, undo) = make_move(grid, me, side, mv, ctx.zobrist, current_hash);
+        let ate_food = undo.ate_food();
 
         // Evaluate root bonuses while the move is applied and board is accurately updated
         let mut root_bonus = 0;
@@ -788,20 +809,7 @@ pub fn negamax<const W: usize, const N: usize>(
 
         let modified_score = calc_mod_score(child_score);
 
-        unsafe {
-            grid.replace_unchecked(mv.x, mv.y, cell_id, original_head_val);
-        }
-        if let Some((tx, ty, tv)) = tail_restore {
-            unsafe {
-                grid.replace_unchecked(tx, ty, 0, tv);
-            }
-        }
-
-        me.body.pop_front();
-        if let Some(tail) = popped_tail {
-            me.body.push_back(tail);
-        }
-        me.health = old_health;
+        unmake_move(grid, me, undo);
 
         if is_root && ctx.collect_root_children {
             child_records.push(RootChildRecord {
