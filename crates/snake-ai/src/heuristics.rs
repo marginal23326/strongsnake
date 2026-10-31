@@ -17,7 +17,6 @@ pub fn evaluate<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
     me: &AgentState,
     enemy: &AgentState,
-    dist_map: Option<&[i16]>,
     cfg: &AiConfig,
     buffers: &mut SearchBuffers,
 ) -> i32
@@ -25,7 +24,7 @@ pub fn evaluate<const W: usize, const N: usize>(
     #[cfg(feature = "profiling")]
     {
         let start = std::time::Instant::now();
-        let res = evaluate_inner(grid, me, enemy, dist_map, cfg, buffers);
+        let res = evaluate_inner(grid, me, enemy, cfg, buffers);
         crate::PERF_STATS.with(|s| {
             let mut st = s.borrow_mut();
             st.eval_calls += 1;
@@ -35,7 +34,7 @@ pub fn evaluate<const W: usize, const N: usize>(
     }
     #[cfg(not(feature = "profiling"))]
     {
-        evaluate_inner(grid, me, enemy, dist_map, cfg, buffers)
+        evaluate_inner(grid, me, enemy, cfg, buffers)
     }
 }
 
@@ -43,7 +42,6 @@ fn evaluate_inner<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
     me: &AgentState,
     enemy: &AgentState,
-    dist_map: Option<&[i16]>,
     cfg: &AiConfig,
     buffers: &mut SearchBuffers,
 ) -> i32
@@ -204,18 +202,13 @@ fn evaluate_inner<const W: usize, const N: usize>(
     }
 
     if grid.food.any() {
-        let closest_dist = if let Some(map) = dist_map {
-            map[(my_head.y * grid.width + my_head.x) as usize] as i32
-        } else {
-            let mut min_dist = 9999;
-            let mut temp_food = grid.food;
-            while let Some(idx) = temp_food.pop_first() {
-                let fx = (idx as i32) % grid.width;
-                let fy = (idx as i32) / grid.width;
-                min_dist = min_dist.min(manhattan(my_head, Point { x: fx, y: fy }));
-            }
-            min_dist
-        };
+        let mut closest_dist = 9999;
+        let mut temp_food = grid.food;
+        while let Some(idx) = temp_food.pop_first() {
+            let fx = (idx as i32) % grid.width;
+            let fy = (idx as i32) / grid.width;
+            closest_dist = closest_dist.min(manhattan(my_head, Point { x: fx, y: fy }));
+        }
 
         if closest_dist > me.health {
             return cfg.scores.loss;

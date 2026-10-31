@@ -37,8 +37,7 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SearchFrame<'a> {
-    pub dist_map: Option<&'a [i16]>,
+pub struct SearchFrame {
     pub depth: usize,
     pub alpha: i32,
     pub beta: i32,
@@ -468,12 +467,11 @@ pub fn negamax<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
     me: &mut AgentState,
     enemy: &mut AgentState,
-    frame: SearchFrame<'_>,
+    frame: SearchFrame,
     ctx: &mut SearchContext<'_>,
 ) -> SearchResult
 {
     let SearchFrame {
-        dist_map,
         depth,
         mut alpha,
         mut beta,
@@ -534,7 +532,6 @@ pub fn negamax<const W: usize, const N: usize>(
                 me,
                 enemy,
                 SearchFrame {
-                    dist_map,
                     depth: 2,
                     alpha,
                     beta,
@@ -547,9 +544,9 @@ pub fn negamax<const W: usize, const N: usize>(
         }
 
         let score = if side == 0 {
-            evaluate(grid, me, enemy, dist_map, ctx.cfg, ctx.buffers)
+            evaluate(grid, me, enemy, ctx.cfg, ctx.buffers)
         } else {
-            -evaluate(grid, enemy, me, dist_map, ctx.cfg, ctx.buffers)
+            -evaluate(grid, enemy, me, ctx.cfg, ctx.buffers)
         };
 
         ctx.tt.set(current_hash, 0, score, TT_FLAG_EXACT, 255, 255, 255);
@@ -722,7 +719,6 @@ pub fn negamax<const W: usize, const N: usize>(
                 enemy,
                 me,
                 SearchFrame {
-                    dist_map: None,
                     depth: depth - 1,
                     alpha: -beta,
                     beta: -alpha,
@@ -745,7 +741,6 @@ pub fn negamax<const W: usize, const N: usize>(
                     enemy,
                     me,
                     SearchFrame {
-                        dist_map: None,
                         depth: depth - 1 - r,
                         alpha: -alpha - 1,
                         beta: -alpha,
@@ -773,7 +768,6 @@ pub fn negamax<const W: usize, const N: usize>(
                     enemy,
                     me,
                     SearchFrame {
-                        dist_map: None,
                         depth: depth - 1,
                         alpha: -alpha - 1,
                         beta: -alpha,
@@ -792,7 +786,6 @@ pub fn negamax<const W: usize, const N: usize>(
                         enemy,
                         me,
                         SearchFrame {
-                            dist_map: None,
                             depth: depth - 1,
                             alpha: -beta,
                             beta: -alpha,

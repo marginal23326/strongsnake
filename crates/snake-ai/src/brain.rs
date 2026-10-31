@@ -9,7 +9,6 @@ use crate::{
     floodfill::flood_fill,
     grid::Grid,
     model::{AgentState, SearchBuffers},
-    pathfinding::get_food_distance_map,
     search::{RootChildRecord, SearchContext, SearchFrame, negamax, reconstruct_pv},
     tt::TranspositionTable,
     zobrist::Zobrist,
@@ -118,8 +117,6 @@ fn accumulate_perf_stats(total: &mut crate::PerfStats, stats: &crate::PerfStats)
         total.floodfill_duration += stats.floodfill_duration;
         total.move_gen_calls += stats.move_gen_calls;
         total.move_gen_duration += stats.move_gen_duration;
-        total.distmap_calls += stats.distmap_calls;
-        total.distmap_duration += stats.distmap_duration;
     }
 }
 
@@ -129,7 +126,6 @@ struct SearchTask<const W: usize, const N: usize> {
     grid: Grid<W, N>,
     me: AgentState,
     enemy: AgentState,
-    dist_map: Arc<[i16]>,
     cfg: Arc<AiConfig>,
     zobrist: Arc<Zobrist>,
     initial_hash: u64,
@@ -262,7 +258,6 @@ fn execute_search_task<const W: usize, const N: usize>(
         &mut task.me,
         &mut task.enemy,
         SearchFrame {
-            dist_map: Some(task.dist_map.as_ref()),
             depth: task.plies,
             alpha: -2_000_000_000,
             beta: 2_000_000_000,
@@ -410,7 +405,6 @@ where
 
     let started = Instant::now();
     let grid = Grid::<W, N>::from_state(cols, rows, foods, &me.body, &enemy.body);
-    let dist_map = Arc::<[i16]>::from(get_food_distance_map(&grid));
 
     let pre_worker_stats = crate::PERF_STATS.with(|s| *s.borrow());
 
@@ -427,7 +421,6 @@ where
         grid: grid.clone(),
         me: me.clone(),
         enemy: enemy.clone(),
-        dist_map,
         cfg: Arc::new(cfg.clone()),
         zobrist: zobrist.clone(),
         initial_hash,
@@ -502,7 +495,6 @@ where
                 println!("Voronoi: {:>8} calls, {:?}", st.voronoi_calls, st.voronoi_duration);
                 println!("Floodfill: {:>8} calls, {:?}", st.floodfill_calls, st.floodfill_duration);
                 println!("MoveGen: {:>8} calls, {:?}", st.move_gen_calls, st.move_gen_duration);
-                println!("DistMap: {:>8} calls, {:?}", st.distmap_calls, st.distmap_duration);
             }
             println!("======\n");
         });

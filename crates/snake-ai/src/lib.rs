@@ -5,7 +5,6 @@ pub mod floodfill;
 pub mod grid;
 pub mod heuristics;
 pub mod model;
-pub mod pathfinding;
 pub mod search;
 pub mod tt;
 pub mod voronoi;
@@ -42,11 +41,6 @@ pub struct PerfStats {
     pub move_gen_calls: u64,
     #[cfg(feature = "profiling")]
     pub move_gen_duration: Duration,
-
-    #[cfg(feature = "profiling")]
-    pub distmap_calls: u64,
-    #[cfg(feature = "profiling")]
-    pub distmap_duration: Duration,
 }
 
 thread_local! {
