@@ -1,0 +1,65 @@
+{
+  "id": "037",
+  "name": "037_larger_snake_head_clash",
+  "board": {
+    "width": 11,
+    "height": 11,
+    "food": [],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 9,
+            "y": 7
+          },
+          {
+            "x": 9,
+            "y": 8
+          },
+          {
+            "x": 10,
+            "y": 8
+          }
+        ],
+        "health": 99
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 9,
+            "y": 5
+          },
+          {
+            "x": 8,
+            "y": 5
+          },
+          {
+            "x": 7,
+            "y": 5
+          },
+          {
+            "x": 7,
+            "y": 6
+          },
+          {
+            "x": 8,
+            "y": 6
+          }
+        ],
+        "health": 99
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "avoid",
+    "directions": [
+      "down"
+    ]
+  },
+  "description": "A longer opponent head threatens the forward tile, making head-to-head contest fatal"
+}

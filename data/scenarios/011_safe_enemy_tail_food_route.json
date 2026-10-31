@@ -1,0 +1,88 @@
+{
+  "id": "011",
+  "name": "011_safe_enemy_tail_food_route",
+  "board": {
+    "width": 16,
+    "height": 9,
+    "food": [
+      {
+        "x": 3,
+        "y": 3
+      },
+      {
+        "x": 15,
+        "y": 4
+      },
+      {
+        "x": 9,
+        "y": 6
+      }
+    ],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 15,
+            "y": 7
+          },
+          {
+            "x": 15,
+            "y": 8
+          },
+          {
+            "x": 14,
+            "y": 8
+          },
+          {
+            "x": 14,
+            "y": 7
+          }
+        ],
+        "health": 5
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 10,
+            "y": 7
+          },
+          {
+            "x": 11,
+            "y": 7
+          },
+          {
+            "x": 12,
+            "y": 7
+          },
+          {
+            "x": 13,
+            "y": 7
+          },
+          {
+            "x": 13,
+            "y": 6
+          },
+          {
+            "x": 14,
+            "y": 6
+          },
+          {
+            "x": 15,
+            "y": 6
+          }
+        ],
+        "health": 99
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "exact",
+    "direction": "down"
+  },
+  "description": "Only the vacating enemy tail provides an exit toward food before 5 HP starvation"
+}

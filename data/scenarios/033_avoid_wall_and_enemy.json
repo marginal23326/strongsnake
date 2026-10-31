@@ -1,0 +1,55 @@
+{
+  "id": "033",
+  "name": "033_avoid_wall_and_enemy",
+  "board": {
+    "width": 11,
+    "height": 11,
+    "food": [],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 10,
+            "y": 5
+          },
+          {
+            "x": 9,
+            "y": 5
+          },
+          {
+            "x": 8,
+            "y": 5
+          }
+        ],
+        "health": 92
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 10,
+            "y": 4
+          },
+          {
+            "x": 9,
+            "y": 4
+          },
+          {
+            "x": 8,
+            "y": 4
+          }
+        ],
+        "health": 96
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "exact",
+    "direction": "up"
+  },
+  "description": "Facing right wall with enemy snake directly below."
+}

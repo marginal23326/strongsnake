@@ -1,0 +1,76 @@
+{
+  "id": "021",
+  "name": "021_starvation_corner_food",
+  "board": {
+    "width": 20,
+    "height": 20,
+    "food": [
+      {
+        "x": 0,
+        "y": 19
+      }
+    ],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 0,
+            "y": 18
+          },
+          {
+            "x": 0,
+            "y": 17
+          },
+          {
+            "x": 1,
+            "y": 17
+          },
+          {
+            "x": 1,
+            "y": 16
+          },
+          {
+            "x": 1,
+            "y": 15
+          },
+          {
+            "x": 1,
+            "y": 14
+          }
+        ],
+        "health": 1
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 2,
+            "y": 19
+          },
+          {
+            "x": 3,
+            "y": 19
+          },
+          {
+            "x": 4,
+            "y": 19
+          },
+          {
+            "x": 5,
+            "y": 19
+          }
+        ],
+        "health": 100
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "exact",
+    "direction": "up"
+  },
+  "description": "1 HP countdown where corner entry is the sole survival path"
+}

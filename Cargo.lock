@@ -3312,7 +3312,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snake-domain",
- "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::Serialize;
 use snake_ai::{AiConfig, decide_move, decide_move_debug, warm_up_runtime};
-use snake_io::{Expectation, load_scenarios_from_dir};
+use snake_io::{Expectation, Scenario, load_scenarios_from_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RegressionOutput {
@@ -98,6 +98,10 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
     let scenarios = load_scenarios_from_dir(&options.scenario_dir)
         .with_context(|| format!("failed to load scenarios from {}", options.scenario_dir.display()))?;
 
+    if scenarios.is_empty() {
+        anyhow::bail!("no scenarios found in {}", options.scenario_dir.display());
+    }
+
     let depths = if options.depths.is_empty() {
         vec![cfg.max_depth]
     } else {
@@ -182,6 +186,11 @@ pub fn run_regression_suite(mut cfg: AiConfig, options: RegressionOptions) -> Re
 
             if skipped_scenario || last_decision.is_none() {
                 skipped += 1;
+                if options.output.show_fails() {
+                    let file_name = short_scenario_name(&named.file);
+                    let reason = skip_reason(scenario).unwrap_or_else(|| "no decision produced".to_owned());
+                    println!("SKIP {file_name} ({reason})");
+                }
                 continue;
             }
 
@@ -293,6 +302,16 @@ fn short_scenario_name(path: &Path) -> String {
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string())
+}
+
+fn skip_reason(scenario: &Scenario) -> Option<String> {
+    if scenario.board.snakes.is_empty() {
+        Some("board has no snakes".to_owned())
+    } else if scenario.board.snakes.iter().all(|s| s.id != scenario.you_id) {
+        Some(format!("no snake with you_id '{}'", scenario.you_id))
+    } else {
+        None
+    }
 }
 
 fn concise_expectation(expectation: &Expectation) -> String {

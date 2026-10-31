@@ -1,0 +1,64 @@
+{
+  "id": "020",
+  "name": "020_stacked_tail_and_head_contest",
+  "board": {
+    "width": 20,
+    "height": 20,
+    "food": [
+      {
+        "x": 8,
+        "y": 13
+      },
+      {
+        "x": 10,
+        "y": 17
+      }
+    ],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 7,
+            "y": 9
+          },
+          {
+            "x": 7,
+            "y": 10
+          },
+          {
+            "x": 7,
+            "y": 10
+          }
+        ],
+        "health": 100
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 8,
+            "y": 8
+          },
+          {
+            "x": 7,
+            "y": 8
+          },
+          {
+            "x": 7,
+            "y": 8
+          }
+        ],
+        "health": 100
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "exact",
+    "direction": "left"
+  },
+  "description": "Stacked enemy tail ahead will not vacate while an equal-length head contests the right flank"
+}

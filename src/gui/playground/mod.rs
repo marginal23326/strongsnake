@@ -3,6 +3,7 @@ use std::time::Instant;
 use eframe::egui;
 use snake_ai::{AgentState, Decision, decide_move_debug};
 use snake_domain::{Direction, SimConfig, Snake, simulate_turn};
+use snake_io::{AI_ID, PLAYER_ID};
 
 use crate::services::build_playground_state;
 
@@ -35,7 +36,7 @@ impl SnakeGuiApp {
     }
 
     pub(super) fn set_player_dir(&mut self, dir: Direction) {
-        let Some(player) = self.sim_state.board.snakes.iter().find(|s| s.id.0 == "s1").cloned() else {
+        let Some(player) = self.sim_state.board.snakes.iter().find(|s| s.id.0 == PLAYER_ID).cloned() else {
             self.player_dir = dir;
             return;
         };
@@ -63,8 +64,8 @@ impl SnakeGuiApp {
     }
 
     fn living_player_and_ai(&self) -> Option<(Snake, Snake)> {
-        let player = self.sim_state.board.snakes.iter().find(|s| s.id.0 == "s1").cloned()?;
-        let ai = self.sim_state.board.snakes.iter().find(|s| s.id.0 == "s2").cloned()?;
+        let player = self.sim_state.board.snakes.iter().find(|s| s.id.0 == PLAYER_ID).cloned()?;
+        let ai = self.sim_state.board.snakes.iter().find(|s| s.id.0 == AI_ID).cloned()?;
         if !player.alive || !ai.alive {
             return None;
         }

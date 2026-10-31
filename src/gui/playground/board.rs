@@ -1,5 +1,6 @@
 use eframe::egui::{self, Color32, Rect, Stroke, pos2, vec2};
 use snake_domain::{Direction, Point, SimConfig, simulate_turn};
+use snake_io::{AI_ID, PLAYER_ID};
 
 use super::super::state::{EditMode, SnakeGuiApp};
 
@@ -12,11 +13,11 @@ impl SnakeGuiApp {
 
         let mut p_idx = 0;
         for _ in 0..turns_to_simulate {
-            let m_s2 = self.pv_line.get(p_idx).copied().unwrap_or(Direction::Up);
-            let m_s1 = self.pv_line.get(p_idx + 1).copied().unwrap_or(Direction::Up);
+            let m_ai = self.pv_line.get(p_idx).copied().unwrap_or(Direction::Up);
+            let m_player = self.pv_line.get(p_idx + 1).copied().unwrap_or(Direction::Up);
             p_idx += 2;
 
-            let intents = [m_s1, m_s2];
+            let intents = [m_player, m_ai];
             let _ = simulate_turn(&mut state, &intents, &mut rng, SimConfig::default());
         }
         state
@@ -64,7 +65,7 @@ impl SnakeGuiApp {
                 }
             }
             EditMode::PaintP1 | EditMode::PaintAi => {
-                let target_id = if self.edit_mode == EditMode::PaintP1 { "s1" } else { "s2" };
+                let target_id = if self.edit_mode == EditMode::PaintP1 { PLAYER_ID } else { AI_ID };
                 if let Some(snake) = self.sim_state.board.snakes.iter_mut().find(|s| s.id.0 == target_id) {
                     if is_new_stroke {
                         snake.body.clear();
@@ -214,7 +215,7 @@ impl SnakeGuiApp {
                     continue;
                 }
 
-                let (body_col, head_col) = if snake.id.0 == "s1" {
+                let (body_col, head_col) = if snake.id.0 == PLAYER_ID {
                     (Color32::from_rgb(31, 111, 235), Color32::from_rgb(88, 166, 255))
                 } else {
                     (Color32::from_rgb(215, 58, 73), Color32::from_rgb(255, 123, 114))

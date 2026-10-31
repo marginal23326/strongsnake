@@ -29,8 +29,8 @@ impl SnakeFen {
                 height: self.rows,
                 food: self.foods,
                 snakes: vec![
-                    Snake::new("s1", "Player", self.p_body, self.p_health),
-                    Snake::new("s2", "AI", self.a_body, self.a_health),
+                    Snake::new("player", "Player", self.p_body, self.p_health),
+                    Snake::new("ai", "AI", self.a_body, self.a_health),
                 ],
             },
         }

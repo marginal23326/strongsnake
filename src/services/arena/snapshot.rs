@@ -68,10 +68,12 @@ pub(crate) fn build_snapshot(trace: &[MatchTraceFrame], snapshot_ticks: usize, w
     let idx = trace.len().saturating_sub(ticks);
     let frame = &trace[idx];
 
-    let s1 = frame.state.board.snakes.iter().find(|s| s.id.0 == "s1");
-    let s2 = frame.state.board.snakes.iter().find(|s| s.id.0 == "s2");
-    let local = s1.cloned().unwrap_or_else(|| Snake::new("s1", "local", Vec::new(), 0));
-    let opponent = s2.cloned().unwrap_or_else(|| Snake::new("s2", "opponent", Vec::new(), 0));
+    let local_snake = frame.state.board.snakes.iter().find(|s| s.id.0 == "local");
+    let opp_snake = frame.state.board.snakes.iter().find(|s| s.id.0 == "opponent");
+    let local = local_snake.cloned().unwrap_or_else(|| Snake::new("local", "local", Vec::new(), 0));
+    let opponent = opp_snake
+        .cloned()
+        .unwrap_or_else(|| Snake::new("opponent", "opponent", Vec::new(), 0));
     let moves = trace[idx..].iter().map(|turn| turn.opponent_move.as_lower().to_owned()).collect();
 
     Some(ArenaSnapshotFile {
@@ -127,8 +129,8 @@ pub(crate) fn load_snapshot(path: &Path, width: i32, height: i32) -> Result<Load
                 height,
                 food: snapshot.foods,
                 snakes: vec![
-                    Snake::new("s1", "local", snapshot.local_body, snapshot.local_health),
-                    Snake::new("s2", "opponent", snapshot.opponent_body, snapshot.opponent_health),
+                    Snake::new("local", "local", snapshot.local_body, snapshot.local_health),
+                    Snake::new("opponent", "opponent", snapshot.opponent_body, snapshot.opponent_health),
                 ],
             },
         },

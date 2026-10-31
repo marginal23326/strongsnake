@@ -6,6 +6,7 @@ use serde_json::Value;
 use snake_ai::{AgentState, AiConfig, decide_move};
 use snake_api::{ApiFlavor, build_move_payload, normalize_move_name};
 use snake_domain::{Direction, FoodSettings, GameState, LcgRng, Point, SimConfig, Snake, place_initial_standard_food, simulate_turn};
+use snake_io::{AI_ID, PLAYER_ID};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MatchResult {
@@ -176,13 +177,13 @@ fn build_initial_state(width: i32, height: i32, seed: u32) -> (GameState, LcgRng
             food: Vec::new(),
             snakes: vec![
                 Snake::new(
-                    "s1",
+                    "local",
                     "local",
                     vec![Point { x: pad, y: pad }, Point { x: pad, y: pad - 1 }, Point { x: pad, y: pad - 2 }],
                     100,
                 ),
                 Snake::new(
-                    "s2",
+                    "opponent",
                     "opponent",
                     vec![
                         Point {
@@ -218,26 +219,31 @@ fn build_initial_state(width: i32, height: i32, seed: u32) -> (GameState, LcgRng
 }
 
 pub fn build_playground_state(width: i32, height: i32, seed: u32) -> (GameState, LcgRng) {
-    build_initial_state(width, height, seed)
+    let (mut state, rng) = build_initial_state(width, height, seed);
+    for (snake, (id, name)) in state.board.snakes.iter_mut().zip([(PLAYER_ID, "Player"), (AI_ID, "AI")]) {
+        snake.id = id.into();
+        snake.name = name.to_owned();
+    }
+    (state, rng)
 }
 
 fn resolve_match_snake_indices(state: &GameState) -> (Option<usize>, Option<usize>) {
-    let mut s1_idx = None;
-    let mut s2_idx = None;
+    let mut local_idx = None;
+    let mut opponent_idx = None;
 
     for (idx, snake) in state.board.snakes.iter().enumerate() {
         match snake.id.0.as_str() {
-            "s1" if s1_idx.is_none() => s1_idx = Some(idx),
-            "s2" if s2_idx.is_none() => s2_idx = Some(idx),
+            "local" if local_idx.is_none() => local_idx = Some(idx),
+            "opponent" if opponent_idx.is_none() => opponent_idx = Some(idx),
             _ => {}
         }
-        if s1_idx.is_some() && s2_idx.is_some() {
+        if local_idx.is_some() && opponent_idx.is_some() {
             break;
         }
     }
 
-    let local_idx = s1_idx.or((!state.board.snakes.is_empty()).then_some(0));
-    let opponent_idx = s2_idx.or_else(|| {
+    let local_idx = local_idx.or((!state.board.snakes.is_empty()).then_some(0));
+    let opponent_idx = opponent_idx.or_else(|| {
         state
             .board
             .snakes
@@ -327,7 +333,7 @@ pub(crate) async fn run_single_match_with_options_and_client(
     };
     let mut death = MatchDeathSummary::default();
     let mut trace = options.capture_trace.then(Vec::new);
-    let (s1_idx, s2_idx) = resolve_match_snake_indices(&state);
+    let (local_idx, opponent_idx) = resolve_match_snake_indices(&state);
     let mut intents = vec![Direction::Up; state.board.snakes.len()];
 
     let sim_cfg = SimConfig::default();
@@ -338,23 +344,23 @@ pub(crate) async fn run_single_match_with_options_and_client(
             break;
         }
 
-        let (me_s1, enemy_s1) = extract_agent_pair(&state, s1_idx, s2_idx);
-        let dir_s1 = decide_move(me_s1, enemy_s1, &state.board.food, state.board.width, state.board.height, cfg).best_move;
+        let (me_local, enemy_local) = extract_agent_pair(&state, local_idx, opponent_idx);
+        let dir_local = decide_move(me_local, enemy_local, &state.board.food, state.board.width, state.board.height, cfg).best_move;
 
-        let dir_s2 = if let Some(scripted_move) = scripted_opponent_moves.pop_front() {
+        let dir_opponent = if let Some(scripted_move) = scripted_opponent_moves.pop_front() {
             scripted_move
         } else {
             match opponent {
                 OpponentMode::Local(opp_cfg) => {
-                    let (me_s2, enemy_s2) = extract_agent_pair(&state, s2_idx, s1_idx);
-                    decide_move(me_s2, enemy_s2, &state.board.food, state.board.width, state.board.height, opp_cfg).best_move
+                    let (me_opp, enemy_opp) = extract_agent_pair(&state, opponent_idx, local_idx);
+                    decide_move(me_opp, enemy_opp, &state.board.food, state.board.width, state.board.height, opp_cfg).best_move
                 }
                 OpponentMode::Http { url, flavor } => {
-                    let opponent_id = s2_idx
+                    let opponent_net_id = opponent_idx
                         .and_then(|idx| state.board.snakes.get(idx))
                         .map(|snake| snake.id.0.as_str())
-                        .unwrap_or("s2");
-                    request_http_move(client, url, &state, opponent_id, *flavor, match_cfg.payload_timeout_ms).await
+                        .unwrap_or("opponent");
+                    request_http_move(client, url, &state, opponent_net_id, *flavor, match_cfg.payload_timeout_ms).await
                 }
             }
         };
@@ -363,50 +369,54 @@ pub(crate) async fn run_single_match_with_options_and_client(
             frames.push(MatchTraceFrame {
                 rng_seed: rng.state(),
                 state: state.clone(),
-                opponent_move: dir_s2,
+                opponent_move: dir_opponent,
             });
         }
 
         intents.fill(Direction::Up);
-        if let Some(idx) = s1_idx
+        if let Some(idx) = local_idx
             && idx < intents.len()
         {
-            intents[idx] = dir_s1;
+            intents[idx] = dir_local;
         }
-        if let Some(idx) = s2_idx
+        if let Some(idx) = opponent_idx
             && idx < intents.len()
         {
-            intents[idx] = dir_s2;
+            intents[idx] = dir_opponent;
         }
 
         let turn_summary = simulate_turn(&mut state, &intents, &mut rng, sim_cfg);
 
-        let local_id = s1_idx.and_then(|idx| state.board.snakes.get(idx)).map(|snake| snake.id.0.as_str());
-        let opponent_id = s2_idx.and_then(|idx| state.board.snakes.get(idx)).map(|snake| snake.id.0.as_str());
+        let local_net_id = local_idx
+            .and_then(|idx| state.board.snakes.get(idx))
+            .map(|snake| snake.id.0.as_str());
+        let opponent_net_id = opponent_idx
+            .and_then(|idx| state.board.snakes.get(idx))
+            .map(|snake| snake.id.0.as_str());
         for event in &turn_summary.dead {
-            if local_id.is_some_and(|id| event.snake_id.0 == id) {
+            if local_net_id.is_some_and(|id| event.snake_id.0 == id) {
                 death.local.record(&event.reason);
-            } else if opponent_id.is_some_and(|id| event.snake_id.0 == id) {
+            } else if opponent_net_id.is_some_and(|id| event.snake_id.0 == id) {
                 death.opponent.record(&event.reason);
             }
         }
     }
 
-    let s1 = s1_idx.and_then(|idx| state.board.snakes.get(idx));
-    let s2 = s2_idx.and_then(|idx| state.board.snakes.get(idx));
-    let s1_alive = s1.is_some_and(|snake| snake.alive);
-    let s2_alive = s2.is_some_and(|snake| snake.alive);
-    let s1_len = s1.map_or(0, |snake| snake.len());
-    let s2_len = s2.map_or(0, |snake| snake.len());
+    let local_snake = local_idx.and_then(|idx| state.board.snakes.get(idx));
+    let opponent_snake = opponent_idx.and_then(|idx| state.board.snakes.get(idx));
+    let local_alive = local_snake.is_some_and(|snake| snake.alive);
+    let opponent_alive = opponent_snake.is_some_and(|snake| snake.alive);
+    let local_len = local_snake.map_or(0, |snake| snake.len());
+    let opponent_len = opponent_snake.map_or(0, |snake| snake.len());
 
-    let winner = if s1_alive && !s2_alive {
+    let winner = if local_alive && !opponent_alive {
         "local".to_owned()
-    } else if s2_alive && !s1_alive {
+    } else if opponent_alive && !local_alive {
         "opponent".to_owned()
-    } else if s1_alive && s2_alive {
-        if s1_len > s2_len {
+    } else if local_alive && opponent_alive {
+        if local_len > opponent_len {
             "local".to_owned()
-        } else if s2_len > s1_len {
+        } else if opponent_len > local_len {
             "opponent".to_owned()
         } else {
             "draw".to_owned()
@@ -419,10 +429,10 @@ pub(crate) async fn run_single_match_with_options_and_client(
         seed,
         turns: state.turn,
         winner,
-        local_length: s1_len,
-        opp_length: s2_len,
+        local_length: local_len,
+        opp_length: opponent_len,
         death,
-        local_died: !s1_alive,
+        local_died: !local_alive,
     };
 
     MatchRunOutput { result, trace }

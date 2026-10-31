@@ -1,0 +1,74 @@
+{
+  "id": "043",
+  "name": "043_starvation_food_urgency",
+  "board": {
+    "width": 16,
+    "height": 9,
+    "food": [
+      {
+        "x": 9,
+        "y": 0
+      },
+      {
+        "x": 6,
+        "y": 2
+      },
+      {
+        "x": 5,
+        "y": 1
+      }
+    ],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 8,
+            "y": 1
+          },
+          {
+            "x": 9,
+            "y": 1
+          },
+          {
+            "x": 10,
+            "y": 1
+          }
+        ],
+        "health": 3
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 7,
+            "y": 3
+          },
+          {
+            "x": 8,
+            "y": 3
+          },
+          {
+            "x": 9,
+            "y": 3
+          },
+          {
+            "x": 10,
+            "y": 3
+          }
+        ],
+        "health": 94
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "avoid",
+    "directions": [
+      "up"
+    ]
+  },
+  "description": "Critical 3 HP countdown where stepping away from food guarantees starvation"
+}

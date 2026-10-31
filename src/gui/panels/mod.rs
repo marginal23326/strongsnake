@@ -1,4 +1,5 @@
 use eframe::egui::{self, Color32, CornerRadius, Frame, Margin, RichText, Stroke};
+use snake_io::{AI_ID, PLAYER_ID};
 
 use super::state::{SnakeGuiApp, Tab};
 
@@ -85,8 +86,8 @@ impl SnakeGuiApp {
                                     .map(|s| (s.health, s.body.len()))
                                     .unwrap_or((0, 0))
                             };
-                            let (s1_hp, s1_len) = snake_stats("s1");
-                            let (s2_hp, s2_len) = snake_stats("s2");
+                            let (player_hp, player_len) = snake_stats(PLAYER_ID);
+                            let (ai_hp, ai_len) = snake_stats(AI_ID);
 
                             ui.label(format!("{:.1}ms", self.last_move_ms)).on_hover_text("Last AI move time");
                             ui.separator();
@@ -94,12 +95,12 @@ impl SnakeGuiApp {
                             ui.label(RichText::new(format!("Turn {}", self.sim_state.turn)).strong());
                             ui.separator();
 
-                            ui.label(format!("HP:{} Len:{}", s2_hp, s2_len));
+                            ui.label(format!("HP:{} Len:{}", ai_hp, ai_len));
                             ui.label(RichText::new("AI").strong().color(Color32::from_rgb(255, 123, 114)));
                             ui.separator();
 
-                            ui.label(format!("HP:{} Len:{}", s1_hp, s1_len));
-                            ui.label(RichText::new("P1").strong().color(Color32::from_rgb(88, 166, 255)));
+                            ui.label(format!("HP:{} Len:{}", player_hp, player_len));
+                            ui.label(RichText::new("Player").strong().color(Color32::from_rgb(88, 166, 255)));
                         } else if self.worker_running {
                             ui.label(RichText::new(format!("Running: {}", self.worker_label)).color(Color32::from_rgb(88, 166, 255)));
                         } else {
