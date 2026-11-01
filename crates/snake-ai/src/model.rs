@@ -98,22 +98,3 @@ pub struct AgentState {
     pub body: FastBody,
     pub health: i32,
 }
-
-#[derive(Debug, Clone)]
-pub struct SearchBuffers {
-    pub current_gen: u16,
-}
-
-impl SearchBuffers {
-    pub fn new(_size: usize) -> Self {
-        Self { current_gen: 0 }
-    }
-    pub fn ensure_adj(&mut self, _width: i32, _height: i32) {}
-    pub fn next_gen(&mut self) -> u16 {
-        self.current_gen = self.current_gen.wrapping_add(1);
-        if self.current_gen == 0 {
-            self.current_gen = 1;
-        }
-        self.current_gen
-    }
-}

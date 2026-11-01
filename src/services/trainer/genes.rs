@@ -11,14 +11,9 @@ pub(super) struct GeneSpec {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum GeneKey {
-    TrapDanger,
-    StrategicSqueeze,
-    EnemyTrapped,
-    HeadOnCollision,
     TightSpot,
     Length,
     EatReward,
-    TerritoryControl,
     KillPressure,
     FoodIntensity,
     FoodThreshold,
@@ -29,14 +24,9 @@ pub(super) enum GeneKey {
 impl GeneKey {
     fn read(self, cfg: &AiConfig) -> f64 {
         match self {
-            Self::TrapDanger => cfg.scores.trap_danger as f64,
-            Self::StrategicSqueeze => cfg.scores.strategic_squeeze as f64,
-            Self::EnemyTrapped => cfg.scores.enemy_trapped as f64,
-            Self::HeadOnCollision => cfg.scores.head_on_collision as f64,
             Self::TightSpot => cfg.scores.tight_spot as f64,
             Self::Length => cfg.scores.length as f64,
             Self::EatReward => cfg.scores.eat_reward as f64,
-            Self::TerritoryControl => cfg.scores.territory_control as f64,
             Self::KillPressure => cfg.scores.kill_pressure as f64,
             Self::FoodIntensity => cfg.scores.food.intensity,
             Self::FoodThreshold => cfg.scores.food.threshold,
@@ -47,14 +37,9 @@ impl GeneKey {
 
     fn write(self, cfg: &mut AiConfig, value: f64) {
         match self {
-            Self::TrapDanger => cfg.scores.trap_danger = value.round() as i32,
-            Self::StrategicSqueeze => cfg.scores.strategic_squeeze = value.round() as i32,
-            Self::EnemyTrapped => cfg.scores.enemy_trapped = value.round() as i32,
-            Self::HeadOnCollision => cfg.scores.head_on_collision = value.round() as i32,
             Self::TightSpot => cfg.scores.tight_spot = value.round() as i32,
             Self::Length => cfg.scores.length = value.round() as i32,
             Self::EatReward => cfg.scores.eat_reward = value.round() as i32,
-            Self::TerritoryControl => cfg.scores.territory_control = value.round() as i32,
             Self::KillPressure => cfg.scores.kill_pressure = value.round() as i32,
             Self::FoodIntensity => cfg.scores.food.intensity = value,
             Self::FoodThreshold => cfg.scores.food.threshold = value,
@@ -64,31 +49,7 @@ impl GeneKey {
     }
 }
 
-const GENE_SPECS: [GeneSpec; 13] = [
-    GeneSpec {
-        key: GeneKey::TrapDanger,
-        min: -700_000_000.0,
-        max: -150_000_000.0,
-        is_int: true,
-    },
-    GeneSpec {
-        key: GeneKey::StrategicSqueeze,
-        min: -50_000_000.0,
-        max: -500_000.0,
-        is_int: true,
-    },
-    GeneSpec {
-        key: GeneKey::EnemyTrapped,
-        min: 50_000_000.0,
-        max: 500_000_000.0,
-        is_int: true,
-    },
-    GeneSpec {
-        key: GeneKey::HeadOnCollision,
-        min: -400_000_000.0,
-        max: -100_000_000.0,
-        is_int: true,
-    },
+const GENE_SPECS: [GeneSpec; 8] = [
     GeneSpec {
         key: GeneKey::TightSpot,
         min: -100_000.0,
@@ -105,12 +66,6 @@ const GENE_SPECS: [GeneSpec; 13] = [
         key: GeneKey::EatReward,
         min: 100.0,
         max: 10_000.0,
-        is_int: true,
-    },
-    GeneSpec {
-        key: GeneKey::TerritoryControl,
-        min: 10.0,
-        max: 5_000.0,
         is_int: true,
     },
     GeneSpec {

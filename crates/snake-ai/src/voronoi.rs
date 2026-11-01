@@ -1,6 +1,5 @@
 use crate::bitboard::BitBoard;
 use crate::grid::Grid;
-use crate::model::SearchBuffers;
 use snake_domain::Point;
 
 #[derive(Debug, Clone)]
@@ -9,7 +8,7 @@ pub struct VoronoiResult {
     pub enemy_count: i32,
 }
 
-pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point, _buffers: &mut SearchBuffers) -> VoronoiResult
+pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point) -> VoronoiResult
 {
     #[cfg(feature = "profiling")]
     {

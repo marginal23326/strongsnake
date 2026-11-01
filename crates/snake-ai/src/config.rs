@@ -29,15 +29,23 @@ pub struct FoodCurveConfig {
     pub exponent: f64,
 }
 
+/// Evaluation scores. Outcomes and verdicts must stay ordered loss < trap_danger < head_on_collision < draw
+/// < strategic_squeeze < 0 < enemy_trapped < win, and far above the weights. The trainer tunes the weights;
+/// `territory_control` is the unit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreConfig {
+    // Outcomes.
     pub win: i32,
     pub loss: i32,
     pub draw: i32,
-    pub trap_danger: i32,
-    pub strategic_squeeze: i32,
-    pub enemy_trapped: i32,
     pub head_on_collision: i32,
+
+    // Verdicts.
+    pub trap_danger: i32,
+    pub enemy_trapped: i32,
+    pub strategic_squeeze: i32,
+
+    // Weights.
     pub tight_spot: i32,
     pub length: i32,
     pub eat_reward: i32,

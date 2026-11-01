@@ -1,6 +1,6 @@
 use crate::bitboard::BitBoard;
 use crate::grid::Grid;
-use crate::model::{FastBody, SearchBuffers};
+use crate::model::FastBody;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FloodFillResult {
@@ -16,7 +16,6 @@ pub fn flood_fill<const W: usize, const N: usize>(
     max_depth: i32,
     my_body: Option<&FastBody>,
     enemy_body: Option<&FastBody>,
-    _buffers: &mut SearchBuffers,
 ) -> FloodFillResult
 {
     #[cfg(feature = "profiling")]

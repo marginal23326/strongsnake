@@ -8,7 +8,7 @@ use crate::{
     config::AiConfig,
     floodfill::flood_fill,
     grid::Grid,
-    model::{AgentState, SearchBuffers},
+    model::AgentState,
     search::{RootChildRecord, SearchContext, SearchFrame, reconstruct_pv, search},
     tt::TranspositionTable,
     zobrist::Zobrist,
@@ -233,12 +233,10 @@ fn execute_search_task<const W: usize, const N: usize>(
     thread_id: usize,
     mut task: SearchTask<W, N>,
     history: &mut [Vec<i32>; 2],
-    buffers: &mut SearchBuffers,
 ) -> WorkerResult {
     crate::PERF_STATS.with(|s| *s.borrow_mut() = crate::PerfStats::default());
 
     reset_worker_state(history, task.grid_size);
-    *buffers = SearchBuffers::new(task.grid_size);
 
     let tt_guard = get_tt().read().unwrap();
     let mut search_ctx = SearchContext {
@@ -248,7 +246,6 @@ fn execute_search_task<const W: usize, const N: usize>(
         cfg: &task.cfg,
         tt: &tt_guard,
         zobrist: task.zobrist.as_ref(),
-        buffers,
         thread_id,
         nodes_searched: 0,
     };
@@ -274,19 +271,18 @@ fn execute_search_task<const W: usize, const N: usize>(
 
 fn worker_loop(thread_id: usize, rx: mpsc::Receiver<WorkerCommand>) {
     let mut history = [Vec::new(), Vec::new()];
-    let mut buffers = SearchBuffers::new(0);
 
     while let Ok(command) = rx.recv() {
         match command {
             WorkerCommand::Search { task, result_tx } => {
                 let result = match task {
-                    // WorkerTask::Task64(t) => execute_search_task(thread_id, t, &mut history, &mut buffers),
-                    WorkerTask::Task128(t) => execute_search_task(thread_id, t, &mut history, &mut buffers),
-                    WorkerTask::Task192(t) => execute_search_task(thread_id, t, &mut history, &mut buffers),
-                    // WorkerTask::Task256(t) => execute_search_task(thread_id, t, &mut history, &mut buffers),
-                    // WorkerTask::Task320(t) => execute_search_task(thread_id, t, &mut history, &mut buffers),
-                    // WorkerTask::Task384(t) => execute_search_task(thread_id, t, &mut history, &mut buffers),
-                    WorkerTask::Task448(t) => execute_search_task(thread_id, t, &mut history, &mut buffers),
+                    // WorkerTask::Task64(t) => execute_search_task(thread_id, t, &mut history),
+                    WorkerTask::Task128(t) => execute_search_task(thread_id, t, &mut history),
+                    WorkerTask::Task192(t) => execute_search_task(thread_id, t, &mut history),
+                    // WorkerTask::Task256(t) => execute_search_task(thread_id, t, &mut history),
+                    // WorkerTask::Task320(t) => execute_search_task(thread_id, t, &mut history),
+                    // WorkerTask::Task384(t) => execute_search_task(thread_id, t, &mut history),
+                    WorkerTask::Task448(t) => execute_search_task(thread_id, t, &mut history),
                 };
                 let _ = result_tx.send(result);
             }
@@ -295,7 +291,7 @@ fn worker_loop(thread_id: usize, rx: mpsc::Receiver<WorkerCommand>) {
     }
 }
 
-fn fallback_move<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, buffers: &mut SearchBuffers) -> Direction {
+fn fallback_move<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState) -> Direction {
     if me.body.is_empty() {
         return Direction::Up;
     }
@@ -310,7 +306,7 @@ fn fallback_move<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentSt
     let mut candidates = Vec::new();
     for (x, y, dir) in neighbors {
         if grid.is_safe(x, y) {
-            let ff = flood_fill(grid, x, y, 100, Some(&me.body), None, buffers);
+            let ff = flood_fill(grid, x, y, 100, Some(&me.body), None);
             candidates.push((ff.count, dir));
         }
     }
@@ -429,8 +425,7 @@ where
 
     let (primary_res, mut aggregated_stats) = if num_threads <= 1 {
         let mut history = [Vec::new(), Vec::new()];
-        let mut buffers = SearchBuffers::new(grid_size);
-        let worker_result = execute_search_task(0, base_task, &mut history, &mut buffers);
+        let worker_result = execute_search_task(0, base_task, &mut history);
         (worker_result.result, worker_result.stats)
     } else {
         let mut pool = get_worker_pool().lock().unwrap();
@@ -441,11 +436,7 @@ where
     accumulate_perf_stats(&mut aggregated_stats, &pre_worker_stats);
     crate::PERF_STATS.with(|s| *s.borrow_mut() = aggregated_stats);
 
-    let mut fallback_buffers = SearchBuffers::new(grid_size);
-    let selected = primary_res
-        .mv
-        .map(|m| m.dir)
-        .unwrap_or_else(|| fallback_move(&grid, &me, &mut fallback_buffers));
+    let selected = primary_res.mv.map(|m| m.dir).unwrap_or_else(|| fallback_move(&grid, &me));
     let score = primary_res.score;
     let root_children = primary_res.children;
     let pv = if build_debug {

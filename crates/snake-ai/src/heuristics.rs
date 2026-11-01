@@ -1,30 +1,102 @@
 use snake_domain::Point;
 
-use crate::{
-    config::AiConfig,
-    floodfill::flood_fill,
-    grid::Grid,
-    model::{AgentState, SearchBuffers},
-    voronoi::compute_voronoi,
-};
+use crate::{config::AiConfig, floodfill::flood_fill, grid::Grid, model::AgentState, voronoi::compute_voronoi};
+
+// Tactical terms are measured in territory cells: `scores.territory_control` is the unit.
+
+const PIN_REACH_FROM_WALL: i32 = 3;
+const PIN_REACH_ALONG_WALL: i32 = 4;
+const PIN_FALLOFF: i32 = 8;
+const PIN_CELLS: i32 = 100;
+const PIN_MIN_HEALTH: i32 = 15;
+
+const EXIT_NEAR_TURNS: i32 = 2;
+const EXIT_NEAR_CELLS: i32 = 5;
+const ESCAPE_TURN_CELLS: i32 = 2;
+
+const TIGHT_SPOT_AREA_SHARE: f64 = 0.2;
+
+/// Trap verdicts shrink in a dense tail race, where "sealed" pockets often reopen.
+const DENSE_VERDICT_DIVISOR: i32 = 1000;
+const DENSE_MIN_LEN: usize = 20;
 
 #[inline(always)]
 fn manhattan(a: Point, b: Point) -> i32 {
     (a.x - b.x).abs() + (a.y - b.y).abs()
 }
 
-pub fn evaluate<const W: usize, const N: usize>(
-    grid: &mut Grid<W, N>,
-    me: &AgentState,
-    enemy: &AgentState,
-    cfg: &AiConfig,
-    buffers: &mut SearchBuffers,
-) -> i32
+/// A packed endgame: both snakes are long and together fill `dense_tail_race_occupancy` percent of the board.
+pub(crate) fn is_dense_tail_race(my_len: usize, enemy_len: usize, area: usize, cfg: &AiConfig) -> bool {
+    my_len >= DENSE_MIN_LEN && enemy_len >= DENSE_MIN_LEN && (my_len + enemy_len) * 100 >= cfg.dense_tail_race_occupancy * area
+}
+
+/// How hard `hunter` pins `prey` against a wall.
+fn pin_pressure(prey: Point, hunter: Point, width: i32, height: i32) -> i32 {
+    let dx = (prey.x - hunter.x).abs();
+    let dy = (prey.y - hunter.y).abs();
+    let mut pressure = 0;
+
+    if prey.x == 0 || prey.x == width - 1 {
+        let wall_gap = if prey.x == 0 { hunter.x } else { width - 1 - hunter.x };
+        if wall_gap <= PIN_REACH_FROM_WALL && dy <= PIN_REACH_ALONG_WALL {
+            pressure += PIN_FALLOFF - (wall_gap + dy);
+        }
+    }
+    if prey.y == 0 || prey.y == height - 1 {
+        let wall_gap = if prey.y == 0 { hunter.y } else { height - 1 - hunter.y };
+        if wall_gap <= PIN_REACH_FROM_WALL && dx <= PIN_REACH_ALONG_WALL {
+            pressure += PIN_FALLOFF - (wall_gap + dx);
+        }
+    }
+    pressure
+}
+
+/// How much room a snake has, given the other snake's body.
+#[derive(Debug, Clone, Copy)]
+enum Confinement {
+    Trapped,
+    Roomy { exit_near: bool },
+    Cramped { escape_turns: i32 },
+}
+
+impl Confinement {
+    /// Worth to the confined snake; `trapped` is the verdict for being sealed in.
+    fn value(self, trapped: i32, cfg: &AiConfig) -> i32 {
+        let unit = cfg.scores.territory_control;
+        match self {
+            Self::Trapped => trapped,
+            Self::Roomy { exit_near: true } => unit * EXIT_NEAR_CELLS,
+            Self::Roomy { exit_near: false } => cfg.scores.strategic_squeeze,
+            Self::Cramped { escape_turns } => -escape_turns * unit * ESCAPE_TURN_CELLS,
+        }
+    }
+}
+
+fn confinement<const W: usize, const N: usize>(grid: &Grid<W, N>, snake: &AgentState, rival: &AgentState) -> Confinement {
+    let head = snake.body.head();
+    let len = snake.body.len() as i32;
+
+    let fill = flood_fill(grid, head.x, head.y, len + 2, Some(&snake.body), Some(&rival.body));
+    let food_bonus = fill.has_food as i32;
+    let escape_turns = fill.min_turns_to_clear.saturating_add(food_bonus);
+    let future_len = len + food_bonus;
+
+    if fill.count < future_len && fill.count < escape_turns {
+        Confinement::Trapped
+    } else if fill.count >= future_len {
+        let exit_near = manhattan(head, snake.body.last()) <= EXIT_NEAR_TURNS || escape_turns <= EXIT_NEAR_TURNS;
+        Confinement::Roomy { exit_near }
+    } else {
+        Confinement::Cramped { escape_turns }
+    }
+}
+
+pub fn evaluate<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> i32
 {
     #[cfg(feature = "profiling")]
     {
         let start = std::time::Instant::now();
-        let res = evaluate_inner(grid, me, enemy, cfg, buffers);
+        let res = evaluate_inner(grid, me, enemy, cfg);
         crate::PERF_STATS.with(|s| {
             let mut st = s.borrow_mut();
             st.eval_calls += 1;
@@ -34,197 +106,97 @@ pub fn evaluate<const W: usize, const N: usize>(
     }
     #[cfg(not(feature = "profiling"))]
     {
-        evaluate_inner(grid, me, enemy, cfg, buffers)
+        evaluate_inner(grid, me, enemy, cfg)
     }
 }
 
-fn evaluate_inner<const W: usize, const N: usize>(
-    grid: &mut Grid<W, N>,
-    me: &AgentState,
-    enemy: &AgentState,
-    cfg: &AiConfig,
-    buffers: &mut SearchBuffers,
-) -> i32
+fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> i32
 {
+    let scores = &cfg.scores;
     if me.health <= 0 || me.body.is_empty() {
-        return cfg.scores.loss;
+        return scores.loss;
     }
     if enemy.health <= 0 || enemy.body.is_empty() {
-        return cfg.scores.win;
+        return scores.win;
     }
 
-    let mut score: i32 = 0;
-
-    let total_len = me.body.len() + enemy.body.len();
-    let total_area = (grid.width * grid.height) as usize;
-    let dense_tail_race =
-        me.body.len() >= 20 && enemy.body.len() >= 20 && (total_len * 100) >= (cfg.dense_tail_race_occupancy * total_area);
-
-    score += me.body.len() as i32 * cfg.scores.length;
+    let area = (grid.width * grid.height) as usize;
+    let dense = is_dense_tail_race(me.body.len(), enemy.body.len(), area, cfg);
+    let scale_verdict = |verdict: i32| if dense { verdict / DENSE_VERDICT_DIVISOR } else { verdict };
+    let unit = scores.territory_control;
 
     let my_head = me.body.head();
     let enemy_head = enemy.body.head();
 
-    if me.health > 15 {
-        let base_pin = cfg.scores.territory_control.abs() * 100; // ~326,500
-        let mut my_pin_penalty = 0;
+    let mut score = me.body.len() as i32 * scores.length;
 
-        let dx = (my_head.x - enemy_head.x).abs();
-        let dy = (my_head.y - enemy_head.y).abs();
-
-        if my_head.x == 0 || my_head.x == grid.width - 1 {
-            let ex_dist = if my_head.x == 0 {
-                enemy_head.x
-            } else {
-                grid.width - 1 - enemy_head.x
-            };
-            if ex_dist <= 3 && dy <= 4 {
-                my_pin_penalty += base_pin * (8 - (ex_dist + dy));
-            }
-        }
-        if my_head.y == 0 || my_head.y == grid.height - 1 {
-            let ey_dist = if my_head.y == 0 {
-                enemy_head.y
-            } else {
-                grid.height - 1 - enemy_head.y
-            };
-            if ey_dist <= 3 && dx <= 4 {
-                my_pin_penalty += base_pin * (8 - (ey_dist + dx));
-            }
-        }
-
-        let mut enemy_pin_penalty = 0;
-        if enemy_head.x == 0 || enemy_head.x == grid.width - 1 {
-            let mx_dist = if enemy_head.x == 0 { my_head.x } else { grid.width - 1 - my_head.x };
-            if mx_dist <= 3 && dy <= 4 {
-                enemy_pin_penalty += base_pin * (8 - (mx_dist + dy));
-            }
-        }
-        if enemy_head.y == 0 || enemy_head.y == grid.height - 1 {
-            let my_dist = if enemy_head.y == 0 {
-                my_head.y
-            } else {
-                grid.height - 1 - my_head.y
-            };
-            if my_dist <= 3 && dx <= 4 {
-                enemy_pin_penalty += base_pin * (8 - (my_dist + dx));
-            }
-        }
-
-        score -= my_pin_penalty;
-        score += enemy_pin_penalty;
+    if me.health > PIN_MIN_HEALTH {
+        let pin_unit = unit * PIN_CELLS;
+        score -= pin_unit * pin_pressure(my_head, enemy_head, grid.width, grid.height);
+        score += pin_unit * pin_pressure(enemy_head, my_head, grid.width, grid.height);
     }
 
-    let mut tail_is_safe = false;
-    let mut original_tail_val = 0i8;
-    if !me.body.is_empty() {
+    // My tail leaves its cell this turn, so it must not block my expansion.
+    let leaving_tail = (me.health < 100).then(|| {
         let tail = me.body.last();
-        if me.health < 100 {
-            tail_is_safe = true;
-            original_tail_val = grid.get(tail.x, tail.y);
-            grid.set(tail.x, tail.y, 0);
-        }
+        (tail, grid.get(tail.x, tail.y))
+    });
+    if let Some((tail, _)) = leaving_tail {
+        grid.set(tail.x, tail.y, 0);
+    }
+    let voronoi = compute_voronoi(grid, my_head, enemy_head);
+    if let Some((tail, original)) = leaving_tail {
+        grid.set(tail.x, tail.y, original);
     }
 
-    let voronoi = compute_voronoi(grid, my_head, enemy_head, buffers);
-    if tail_is_safe {
-        let tail = me.body.last();
-        grid.set(tail.x, tail.y, original_tail_val);
+    score += (voronoi.my_count - voronoi.enemy_count) * unit;
+
+    let mut i_am_trapped = false;
+    if voronoi.my_count < me.body.len() as i32 {
+        let state = confinement(grid, me, enemy);
+        i_am_trapped = matches!(state, Confinement::Trapped);
+        score += state.value(scale_verdict(scores.trap_danger), cfg);
+    } else if (voronoi.my_count as f64) < area as f64 * TIGHT_SPOT_AREA_SHARE {
+        score += scores.tight_spot;
     }
 
-    score += (voronoi.my_count - voronoi.enemy_count) * cfg.scores.territory_control;
-
-    let mut i_am_in_death_trap = false;
-    let my_len = me.body.len() as i32;
-
-    if voronoi.my_count < my_len {
-        let ff = flood_fill(grid, my_head.x, my_head.y, my_len + 2, Some(&me.body), Some(&enemy.body), buffers);
-        let food_mod = if ff.has_food { 1 } else { 0 };
-        let escape_time = ff.min_turns_to_clear.saturating_add(food_mod);
-        let future_len = my_len + food_mod;
-
-        if ff.count < future_len && ff.count < escape_time {
-            i_am_in_death_trap = true;
-            let trap_score = if dense_tail_race {
-                cfg.scores.trap_danger / 1000
-            } else {
-                cfg.scores.trap_danger
-            };
-            score += trap_score;
-        } else if ff.count >= future_len {
-            let tail = me.body.last();
-            let dist_to_tail = (my_head.x - tail.x).abs() + (my_head.y - tail.y).abs();
-
-            if dist_to_tail <= 2 || escape_time <= 2 {
-                score += cfg.scores.territory_control * 5;
-            } else {
-                score += cfg.scores.strategic_squeeze;
-            }
-        } else {
-            score -= escape_time * cfg.scores.territory_control * 2;
-        }
-    } else if (voronoi.my_count as f64) < (grid.width * grid.height) as f64 * 0.2 {
-        score += cfg.scores.tight_spot;
-    }
-
-    if !i_am_in_death_trap && voronoi.enemy_count < enemy.body.len() as i32 {
-        let en_head = enemy.body.head();
-        let en_len = enemy.body.len() as i32;
-        let ff = flood_fill(grid, en_head.x, en_head.y, en_len + 2, Some(&enemy.body), Some(&me.body), buffers);
-        let food_mod = if ff.has_food { 1 } else { 0 };
-        let escape_time = ff.min_turns_to_clear.saturating_add(food_mod);
-        let future_len = en_len + food_mod;
-
-        if ff.count < future_len && ff.count < escape_time {
-            let trap_score = if dense_tail_race {
-                cfg.scores.enemy_trapped / 1000
-            } else {
-                cfg.scores.enemy_trapped
-            };
-            score += trap_score;
-        } else if ff.count >= future_len {
-            let tail = enemy.body.last();
-            let dist_to_tail = (en_head.x - tail.x).abs() + (en_head.y - tail.y).abs();
-
-            if dist_to_tail <= 2 || escape_time <= 2 {
-                score -= cfg.scores.territory_control * 5;
-            } else {
-                score -= cfg.scores.strategic_squeeze;
-            }
-        } else {
-            score += escape_time * cfg.scores.territory_control * 2;
-        }
+    // The enemy's side mirrors mine; if I am sealed in, that already decided things.
+    if !i_am_trapped && voronoi.enemy_count < enemy.body.len() as i32 {
+        let state = confinement(grid, enemy, me);
+        score -= state.value(-scale_verdict(scores.enemy_trapped), cfg);
     }
 
     let dist_to_opp = manhattan(my_head, enemy_head);
     if dist_to_opp == 1 && me.body.len() > enemy.body.len() {
-        score += cfg.scores.kill_pressure;
+        score += scores.kill_pressure;
     }
 
     if grid.food.any() {
-        let mut closest_dist = 9999;
-        let mut temp_food = grid.food;
-        while let Some(idx) = temp_food.pop_first() {
-            let fx = (idx as i32) % grid.width;
-            let fy = (idx as i32) / grid.width;
-            closest_dist = closest_dist.min(manhattan(my_head, Point { x: fx, y: fy }));
+        let mut closest_dist = i32::MAX;
+        let mut food = grid.food;
+        while let Some(idx) = food.pop_first() {
+            let cell = Point {
+                x: (idx as i32) % grid.width,
+                y: (idx as i32) / grid.width,
+            };
+            closest_dist = closest_dist.min(manhattan(my_head, cell));
         }
 
         if closest_dist > me.health {
-            return cfg.scores.loss;
+            return scores.loss;
         }
 
         let buffer = me.health - closest_dist;
         let panic_value = if buffer > 0 {
-            cfg.scores.food.intensity * (cfg.scores.food.threshold / (buffer as f64 + 1.0)).powf(cfg.scores.food.exponent)
+            scores.food.intensity * (scores.food.threshold / (buffer as f64 + 1.0)).powf(scores.food.exponent)
         } else {
-            cfg.scores.food.intensity * 100.0
+            scores.food.intensity * 100.0
         };
         score -= (closest_dist as f64 * panic_value) as i32;
     }
 
     if me.body.len() > enemy.body.len() + 1 {
-        score -= dist_to_opp * cfg.scores.aggression;
+        score -= dist_to_opp * scores.aggression;
     }
 
     score
