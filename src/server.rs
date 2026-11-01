@@ -13,7 +13,7 @@ use snake_ai::{AgentState, AiConfig, decide_move};
 use snake_api::parse_move_request;
 use snake_domain::Direction;
 use tokio::{net::TcpListener, sync::RwLock};
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -79,20 +79,23 @@ async fn handle_move(State(state): State<ServerState>, Json(body): Json<Value>) 
     };
 
     let cfg = state.config.read().await.clone();
-    let decision = decide_move(
-        AgentState {
-            body: FastBody::from_points(you.body.iter().copied()),
-            health: you.health,
-        },
-        AgentState {
-            body: FastBody::from_points(enemy.into_iter().flat_map(|e| e.body.iter().copied())),
-            health: enemy.map(|e| e.health).unwrap_or(0),
-        },
-        &parsed.food,
-        parsed.width,
-        parsed.height,
-        &cfg,
-    );
+    let me = AgentState {
+        body: FastBody::from_points(you.body.iter().copied()),
+        health: you.health,
+    };
+    let enemy = AgentState {
+        body: FastBody::from_points(enemy.into_iter().flat_map(|e| e.body.iter().copied())),
+        health: enemy.map(|e| e.health).unwrap_or(0),
+    };
+    let (food, width, height) = (parsed.food, parsed.width, parsed.height);
+
+    let decision = match tokio::task::spawn_blocking(move || decide_move(me, enemy, &food, width, height, &cfg)).await {
+        Ok(decision) => decision,
+        Err(err) => {
+            error!("search task failed: {err}");
+            return Json(json!({ "move": "up" }));
+        }
+    };
 
     let mv = match decision.best_move {
         Direction::Up => "up",
