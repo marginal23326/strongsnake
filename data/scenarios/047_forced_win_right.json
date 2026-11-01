@@ -1,0 +1,72 @@
+{
+  "id": "047",
+  "name": "047_forced_win_right",
+  "board": {
+    "width": 9,
+    "height": 9,
+    "food": [
+      {
+        "x": 2,
+        "y": 2
+      }
+    ],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 7,
+            "y": 1
+          },
+          {
+            "x": 6,
+            "y": 1
+          },
+          {
+            "x": 6,
+            "y": 2
+          }
+        ],
+        "health": 67
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 6,
+            "y": 0
+          },
+          {
+            "x": 5,
+            "y": 0
+          },
+          {
+            "x": 5,
+            "y": 1
+          },
+          {
+            "x": 5,
+            "y": 2
+          },
+          {
+            "x": 5,
+            "y": 3
+          },
+          {
+            "x": 5,
+            "y": 4
+          }
+        ],
+        "health": 90
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "exact",
+    "direction": "right"
+  },
+  "description": "Moving right forces a win whatever the enemy does."
+}

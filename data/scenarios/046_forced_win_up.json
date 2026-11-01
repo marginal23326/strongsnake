@@ -1,0 +1,72 @@
+{
+  "id": "046",
+  "name": "046_forced_win_up",
+  "board": {
+    "width": 11,
+    "height": 11,
+    "food": [
+      {
+        "x": 3,
+        "y": 4
+      },
+      {
+        "x": 7,
+        "y": 4
+      }
+    ],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 9,
+            "y": 8
+          },
+          {
+            "x": 9,
+            "y": 7
+          },
+          {
+            "x": 8,
+            "y": 7
+          }
+        ],
+        "health": 75
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 10,
+            "y": 7
+          },
+          {
+            "x": 10,
+            "y": 6
+          },
+          {
+            "x": 9,
+            "y": 6
+          },
+          {
+            "x": 9,
+            "y": 5
+          },
+          {
+            "x": 8,
+            "y": 5
+          }
+        ],
+        "health": 80
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "exact",
+    "direction": "up"
+  },
+  "description": "Moving up forces a win whatever the enemy does."
+}

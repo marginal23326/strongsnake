@@ -9,7 +9,7 @@ use crate::{
     floodfill::flood_fill,
     grid::Grid,
     model::{AgentState, SearchBuffers},
-    search::{RootChildRecord, SearchContext, SearchFrame, negamax, reconstruct_pv},
+    search::{RootChildRecord, SearchContext, SearchFrame, reconstruct_pv, search},
     tt::TranspositionTable,
     zobrist::Zobrist,
 };
@@ -44,12 +44,12 @@ fn get_worker_pool() -> &'static Mutex<WorkerPool> {
     WORKER_POOL.get_or_init(|| Mutex::new(WorkerPool::new()))
 }
 
-fn depth_based_tt_entries(plies: usize) -> usize {
-    match plies {
-        0..=4 => 1 << 15,   // 32k entries (~2MB)
-        5..=8 => 1 << 17,   // 128k entries (~8MB)
-        9..=12 => 1 << 19,  // 512k entries (~32MB)
-        13..=20 => 1 << 21, // 2M entries (~128MB)
+fn depth_based_tt_entries(turns: usize) -> usize {
+    match turns {
+        0..=2 => 1 << 15,   // 32k entries (~2MB)
+        3..=4 => 1 << 17,   // 128k entries (~8MB)
+        5..=6 => 1 << 19,   // 512k entries (~32MB)
+        7..=10 => 1 << 21,  // 2M entries (~128MB)
         _ => 1 << 22,       // 4M entries (~256MB)
     }
 }
@@ -61,7 +61,7 @@ fn resolve_tt_entries(cfg: &AiConfig) -> usize {
             return entries;
         }
     }
-    depth_based_tt_entries(cfg.search_plies())
+    depth_based_tt_entries(cfg.max_depth)
 }
 
 fn resolve_thread_count(cfg: &AiConfig) -> usize {
@@ -105,7 +105,7 @@ fn prepare_tt_for_search(cfg: &AiConfig) {
 
 #[inline]
 fn accumulate_perf_stats(total: &mut crate::PerfStats, stats: &crate::PerfStats) {
-    total.negamax_calls += stats.negamax_calls;
+    total.nodes += stats.nodes;
 
     #[cfg(feature = "profiling")]
     {
@@ -130,7 +130,7 @@ struct SearchTask<const W: usize, const N: usize> {
     zobrist: Arc<Zobrist>,
     initial_hash: u64,
     grid_size: usize,
-    plies: usize,
+    depth: usize,
 }
 
 struct WorkerResult {
@@ -242,7 +242,7 @@ fn execute_search_task<const W: usize, const N: usize>(
 
     let tt_guard = get_tt().read().unwrap();
     let mut search_ctx = SearchContext {
-        root_depth: task.plies,
+        root_depth: task.depth,
         collect_root_children: task.build_debug && thread_id == 0,
         history_table: history,
         cfg: &task.cfg,
@@ -253,22 +253,21 @@ fn execute_search_task<const W: usize, const N: usize>(
         nodes_searched: 0,
     };
 
-    let result = negamax(
+    let result = search(
         &mut task.grid,
         &mut task.me,
         &mut task.enemy,
         SearchFrame {
-            depth: task.plies,
+            depth: task.depth,
             alpha: -2_000_000_000,
             beta: 2_000_000_000,
-            side: 0,
             current_hash: task.initial_hash,
             q_depth: 0,
         },
         &mut search_ctx,
     );
 
-    crate::PERF_STATS.with(|s| s.borrow_mut().negamax_calls += search_ctx.nodes_searched);
+    crate::PERF_STATS.with(|s| s.borrow_mut().nodes += search_ctx.nodes_searched);
     let stats = crate::PERF_STATS.with(|s| s.take());
     WorkerResult { thread_id, result, stats }
 }
@@ -415,7 +414,7 @@ where
 
     prepare_tt_for_search(cfg);
     let num_threads = resolve_thread_count(cfg);
-    let plies = cfg.search_plies();
+    let depth = cfg.max_depth;
     let base_task = SearchTask {
         build_debug,
         grid: grid.clone(),
@@ -425,7 +424,7 @@ where
         zobrist: zobrist.clone(),
         initial_hash,
         grid_size,
-        plies,
+        depth,
     };
 
     let (primary_res, mut aggregated_stats) = if num_threads <= 1 {
@@ -458,7 +457,7 @@ where
                 enemy.clone(),
                 initial_hash,
                 root_move,
-                plies,
+                depth,
                 &tt_guard,
                 zobrist.as_ref(),
             )
@@ -478,7 +477,7 @@ where
     if cfg.debug_logging {
         let secs = elapsed.as_secs_f64();
         let nps = if secs > 0.0 {
-            (aggregated_stats.negamax_calls as f64 / secs) as u64
+            (aggregated_stats.nodes as f64 / secs) as u64
         } else {
             0
         };
@@ -487,7 +486,7 @@ where
             let st = s.borrow();
             println!("PROFILING:");
             println!("Total time: {}", format_duration_ns(elapsed.as_nanos()));
-            println!("Nodes ({} Threads): {} ({} NPS)", num_threads, st.negamax_calls, nps);
+            println!("Nodes ({} Threads): {} ({} NPS)", num_threads, st.nodes, nps);
 
             #[cfg(feature = "profiling")]
             {
@@ -506,6 +505,6 @@ where
         log,
         root_children,
         pv,
-        search_nodes: aggregated_stats.negamax_calls,
+        search_nodes: aggregated_stats.nodes,
     }
 }

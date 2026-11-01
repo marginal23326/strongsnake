@@ -31,7 +31,7 @@ cargo run --release -- trainer --pop 30 --gens 25
 ## How The AI Picks Moves
 
 At a high level:
-- multi-threaded negamax search with alpha-beta pruning
+- multi-threaded simultaneous-move search (max-min over both snakes' moves) with alpha-beta pruning; each turn's move pair is resolved with the engine's rules
 - transposition table + Zobrist hashing for reuse
 - principal variation search with some late-move reduction
 - evaluation based on territory control (Voronoi), flood fill safety, food urgency, snake length, and head-to-head pressure

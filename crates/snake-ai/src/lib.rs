@@ -20,7 +20,7 @@ use std::time::Duration;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct PerfStats {
-    pub negamax_calls: u64,
+    pub nodes: u64,
 
     #[cfg(feature = "profiling")]
     pub eval_calls: u64,

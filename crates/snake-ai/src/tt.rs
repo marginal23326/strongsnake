@@ -36,6 +36,8 @@ pub struct TtEntry {
     pub mv_x: u8,
     pub mv_y: u8,
     pub mv_dir: u8,
+    /// The enemy's best reply to `mv_dir`.
+    pub reply_dir: u8,
 }
 
 impl Default for TtEntry {
@@ -49,20 +51,30 @@ impl Default for TtEntry {
             mv_x: 255,
             mv_y: 255,
             mv_dir: 255,
+            reply_dir: 255,
         }
+    }
+}
+
+fn direction_from_byte(byte: u8) -> Option<Direction> {
+    match byte {
+        0 => Some(Direction::Up),
+        1 => Some(Direction::Down),
+        2 => Some(Direction::Left),
+        3 => Some(Direction::Right),
+        _ => None,
     }
 }
 
 impl TtEntry {
     #[inline]
     pub fn get_direction(&self) -> Option<Direction> {
-        match self.mv_dir {
-            0 => Some(Direction::Up),
-            1 => Some(Direction::Down),
-            2 => Some(Direction::Left),
-            3 => Some(Direction::Right),
-            _ => None,
-        }
+        direction_from_byte(self.mv_dir)
+    }
+
+    #[inline]
+    pub fn get_reply_direction(&self) -> Option<Direction> {
+        direction_from_byte(self.reply_dir)
     }
 }
 
@@ -174,7 +186,7 @@ impl TranspositionTable {
 
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    pub fn set(&self, hash: u64, depth: usize, score: i32, flag: u8, mv_x: u8, mv_y: u8, mv_dir: u8) {
+    pub fn set(&self, hash: u64, depth: usize, score: i32, flag: u8, mv_x: u8, mv_y: u8, mv_dir: u8, reply_dir: u8) {
         let idx = (hash as usize) & self.mask;
         let slot = unsafe { self.entries.get_unchecked(idx) };
 
@@ -202,6 +214,7 @@ impl TranspositionTable {
                     mv_x,
                     mv_y,
                     mv_dir,
+                    reply_dir,
                 };
             }
         }

@@ -36,6 +36,7 @@ pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[Direction],
 
     debug_assert!((width * height) as usize <= 448, "Board size too large for engine capacity");
 
+    let mut eaten = Vec::new();
     for (snake_idx, snake) in state.board.snakes.iter_mut().enumerate() {
         if !snake.alive || snake.body.is_empty() {
             snake.alive = false;
@@ -53,14 +54,17 @@ pub fn simulate_turn<R: RngSource>(state: &mut GameState, intents: &[Direction],
         let head = current_head.moved(dir);
         snake.body.push_front(head);
 
-        if let Some(food_idx) = state.board.food.iter().position(|f| f.x == head.x && f.y == head.y) {
-            state.board.food.remove(food_idx);
+        if state.board.food.contains(&head) {
+            eaten.push(head);
             snake.health = cfg.max_health;
         } else {
             snake.body.pop_back();
             snake.health -= 1;
         }
     }
+
+    // Food is only removed once every snake has moved, so snakes entering the same cell all eat it.
+    state.board.food.retain(|f| !eaten.contains(f));
 
     state.turn += 1;
 

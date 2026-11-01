@@ -1,16 +1,33 @@
+use std::cmp::Reverse;
+
 use snake_domain::{Direction, Point};
 
 use crate::{
     config::AiConfig,
     grid::Grid,
     heuristics::evaluate,
-    model::{AgentState, SearchBuffers},
+    model::{AgentState, FastBody, SearchBuffers},
     tt::{TT_FLAG_EXACT, TT_FLAG_LOWER, TT_FLAG_UPPER, TranspositionTable},
     zobrist::Zobrist,
 };
 
 const QUIESCENCE_MAX_EXTENSIONS: usize = 8;
 const SCORE_MIN: i32 = -2_000_000_000;
+const SCORE_MAX: i32 = 2_000_000_000;
+const PV_MAX_TURNS: usize = 32;
+
+/// Late-move reductions start at this remaining depth (in turns).
+const LMR_MIN_DEPTH: usize = 3;
+const LMR_REDUCTION: usize = 1;
+/// A reduced probe scoring above this looks like a forced win and is always re-searched in full.
+const LMR_MASSIVE_WIN: i32 = 50_000_000;
+
+const DIRECTIONS: [(i32, i32, Direction, usize); 4] = [
+    (0, 1, Direction::Up, 0),
+    (0, -1, Direction::Down, 1),
+    (-1, 0, Direction::Left, 2),
+    (1, 0, Direction::Right, 3),
+];
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SearchMove {
@@ -20,11 +37,17 @@ pub struct SearchMove {
     pub dir_int: usize,
 }
 
+impl SearchMove {
+    #[inline(always)]
+    fn cell(self) -> Point {
+        Point { x: self.x, y: self.y }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RootChildRecord {
     pub mv: SearchMove,
     pub raw_recursion_score: i32,
-    pub collision_penalty: i32,
     pub ate: bool,
     pub modified_score: i32,
 }
@@ -36,12 +59,22 @@ pub struct SearchResult {
     pub children: Vec<RootChildRecord>,
 }
 
+impl SearchResult {
+    fn leaf(score: i32) -> Self {
+        Self {
+            score,
+            mv: None,
+            children: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct SearchFrame {
+    /// Remaining depth, in turns.
     pub depth: usize,
     pub alpha: i32,
     pub beta: i32,
-    pub side: usize,
     pub current_hash: u64,
     pub q_depth: usize,
 }
@@ -73,9 +106,37 @@ impl MoveList {
         self.moves[self.count] = m;
         self.count += 1;
     }
-    fn as_mut_slice(&mut self) -> &mut [SearchMove] {
-        &mut self.moves[0..self.count]
+    fn as_slice(&self) -> &[SearchMove] {
+        &self.moves[..self.count]
     }
+    fn as_mut_slice(&mut self) -> &mut [SearchMove] {
+        &mut self.moves[..self.count]
+    }
+
+    /// Stable sort on a key computed once per move (there are at most four moves, so no allocation).
+    fn sort_by_cached_key<K: Ord + Copy>(&mut self, mut key: impl FnMut(&SearchMove) -> K) {
+        let mut keys: [Option<K>; 4] = [None; 4];
+        for (slot, mv) in keys.iter_mut().zip(self.as_slice()) {
+            *slot = Some(key(mv));
+        }
+        for i in 1..self.count {
+            let mut j = i;
+            while j > 0 && keys[j - 1] > keys[j] {
+                keys.swap(j - 1, j);
+                self.moves.swap(j - 1, j);
+                j -= 1;
+            }
+        }
+    }
+}
+
+fn tail_cell_if_freed(body: &FastBody) -> Option<Point> {
+    let len = body.len();
+    if len == 0 {
+        return None;
+    }
+    let tail = body.last();
+    (len == 1 || body.get(len - 2) != tail).then_some(tail)
 }
 
 fn get_safe_neighbors<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState) -> MoveList
@@ -100,95 +161,29 @@ fn get_safe_neighbors<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &Ag
 fn get_safe_neighbors_inner<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState) -> MoveList
 {
     let mut list = MoveList::new();
-    let my_body = &me.body;
-    if my_body.is_empty() {
+    if me.body.is_empty() {
         return list;
     }
-    let opp_body = &enemy.body;
-    let head = my_body.head();
+    let head = me.body.head();
+    let occupied = grid.occupied();
+    let freed_tails = [tail_cell_if_freed(&me.body), tail_cell_if_freed(&enemy.body)];
 
-    let mut my_tail = None;
-    let mut my_tail_stacked = false;
-    if my_body.len() > 1 {
-        let tail = my_body.last();
-        let prev = my_body.get(my_body.len() - 2);
-        my_tail = Some(tail);
-        my_tail_stacked = tail == prev;
-    }
-
-    let mut opp_tail = None;
-    let mut opp_tail_stacked = false;
-    let mut enemy_can_eat = false;
-    let occ = grid.occupied();
-    let width = grid.width;
-    let height = grid.height;
-    let food = grid.food;
-
-    if opp_body.len() > 1 {
-        let tail = opp_body.last();
-        let prev = opp_body.get(opp_body.len() - 2);
-        opp_tail = Some(tail);
-        opp_tail_stacked = tail == prev;
-
-        let eh = opp_body.head();
-        let eat_check = [(eh.x, eh.y), (eh.x, eh.y + 1), (eh.x, eh.y - 1), (eh.x - 1, eh.y), (eh.x + 1, eh.y)];
-        for (x, y) in eat_check {
-            if x >= 0 && y >= 0 && x < width && y < height {
-                let idx = (y * width + x) as usize;
-                if food.get(idx) {
-                    enemy_can_eat = true;
-                    break;
-                }
-            }
+    for (dx, dy, dir, dir_int) in DIRECTIONS {
+        let (x, y) = (head.x + dx, head.y + dy);
+        if x < 0 || y < 0 || x >= grid.width || y >= grid.height {
+            continue;
         }
-    }
-
-    let dirs = [
-        (0, 1, Direction::Up, 0usize),
-        (0, -1, Direction::Down, 1usize),
-        (-1, 0, Direction::Left, 2usize),
-        (1, 0, Direction::Right, 3usize),
-    ];
-
-    for (dx, dy, dir, dir_int) in dirs {
-        let nx = head.x + dx;
-        let ny = head.y + dy;
-        let mut is_safe = false;
-        if nx >= 0 && ny >= 0 && nx < width && ny < height {
-            let idx = (ny * width + nx) as usize;
-            is_safe = !occ.get(idx);
+        if occupied.get(grid.idx(x, y)) && !freed_tails.contains(&Some(Point { x, y })) {
+            continue;
         }
-
-        if !is_safe {
-            if let Some(my_tail_pos) = my_tail
-                && nx == my_tail_pos.x
-                && ny == my_tail_pos.y
-                && !my_tail_stacked
-            {
-                is_safe = true;
-            }
-            if !is_safe
-                && let Some(opp_tail_pos) = opp_tail
-                && nx == opp_tail_pos.x
-                && ny == opp_tail_pos.y
-                && !opp_tail_stacked
-                && !enemy_can_eat
-            {
-                is_safe = true;
-            }
-        }
-
-        if is_safe {
-            list.push(SearchMove {
-                x: nx,
-                y: ny,
-                dir,
-                dir_int,
-            });
-        }
+        list.push(SearchMove { x, y, dir, dir_int });
     }
 
     list
+}
+
+fn manhattan(a: Point, b: Point) -> i32 {
+    (a.x - b.x).abs() + (a.y - b.y).abs()
 }
 
 fn root_tie_breaker(me: &AgentState, enemy: &AgentState, cols: i32, rows: i32, mv: SearchMove) -> i32 {
@@ -200,26 +195,8 @@ fn root_tie_breaker(me: &AgentState, enemy: &AgentState, cols: i32, rows: i32, m
     let enemy_len = enemy.body.len();
 
     let mut move_into_enemy_tail_penalty = 0;
-    if !enemy.body.is_empty() {
-        let enemy_tail = enemy.body.last();
-        if mv.x == enemy_tail.x && mv.y == enemy_tail.y {
-            move_into_enemy_tail_penalty = 5;
-        }
-    }
-
-    let mut head_contact_bias = 0;
-    if !enemy.body.is_empty() {
-        let enemy_head = enemy.body.head();
-        let dist = (mv.x - enemy_head.x).abs() + (mv.y - enemy_head.y).abs();
-        if dist == 1 {
-            if my_len > enemy_len {
-                head_contact_bias += 20;
-            } else if my_len < enemy_len {
-                head_contact_bias -= 10000;
-            } else {
-                head_contact_bias -= 5000;
-            }
-        }
+    if !enemy.body.is_empty() && mv.cell() == enemy.body.last() {
+        move_into_enemy_tail_penalty = 5;
     }
 
     let mut tail_bias = 0;
@@ -227,13 +204,11 @@ fn root_tie_breaker(me: &AgentState, enemy: &AgentState, cols: i32, rows: i32, m
         let total_len = my_len + enemy_len;
         let total_area = (cols * rows) as usize;
         if (total_len * 100) / total_area >= 40 {
-            let my_tail = me.body.last();
-            let tail_dist = (mv.x - my_tail.x).abs() + (mv.y - my_tail.y).abs();
-            tail_bias = -(tail_dist * 10);
+            tail_bias = -(manhattan(mv.cell(), me.body.last()) * 10);
         }
     }
 
-    tail_bias + head_contact_bias - move_into_enemy_tail_penalty
+    tail_bias - move_into_enemy_tail_penalty
 }
 
 fn should_extend_leaf<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> bool
@@ -277,13 +252,6 @@ struct MoveUndo {
     old_health: i32,
     popped_tail: Option<Point>,
     tail_restore: Option<(i32, i32, i8)>,
-}
-
-impl MoveUndo {
-    #[inline(always)]
-    fn ate_food(&self) -> bool {
-        self.original_head_val == 1
-    }
 }
 
 #[inline(always)]
@@ -372,30 +340,95 @@ fn unmake_move<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &mut A
     me.health = undo.old_health;
 }
 
-#[inline(always)]
-fn apply_search_move<const W: usize, const N: usize>(
+fn starves<const W: usize, const N: usize>(grid: &Grid<W, N>, health: i32, mv: SearchMove) -> bool {
+    health <= 1 && !grid.food.get(grid.idx(mv.x, mv.y))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnOutcome {
+    Continue,
+    Win,
+    Loss,
+    Draw,
+    HeadOnLoss,
+}
+
+fn resolve_turn<const W: usize, const N: usize>(
+    grid: &Grid<W, N>,
+    me: &AgentState,
+    enemy: &AgentState,
+    my_mv: SearchMove,
+    en_mv: SearchMove,
+) -> TurnOutcome
+{
+    let my_eats = grid.food.get(grid.idx(my_mv.x, my_mv.y));
+    let en_eats = grid.food.get(grid.idx(en_mv.x, en_mv.y));
+
+    let mut me_dead = starves(grid, me.health, my_mv);
+    let mut en_dead = starves(grid, enemy.health, en_mv);
+    let mut lost_head_on = false;
+
+    if my_mv.cell() == en_mv.cell() {
+        // Head-to-head: the longer snake (counting this turn's growth) survives, equal lengths both die.
+        let my_len = me.body.len() + my_eats as usize;
+        let en_len = enemy.body.len() + en_eats as usize;
+        lost_head_on = my_len <= en_len && !me_dead;
+        me_dead |= my_len <= en_len;
+        en_dead |= en_len <= my_len;
+    } else {
+        // A snake that eats keeps its tail, so stepping onto it is a body collision.
+        me_dead |= en_eats && my_mv.cell() == enemy.body.last();
+        en_dead |= my_eats && en_mv.cell() == me.body.last();
+    }
+
+    match (me_dead, en_dead) {
+        (false, false) => TurnOutcome::Continue,
+        (false, true) => TurnOutcome::Win,
+        (true, false) if lost_head_on => TurnOutcome::HeadOnLoss,
+        (true, false) => TurnOutcome::Loss,
+        (true, true) => TurnOutcome::Draw,
+    }
+}
+
+fn outcome_score(outcome: TurnOutcome, depth: usize, cfg: &AiConfig) -> Option<i32> {
+    match outcome {
+        TurnOutcome::Continue => None,
+        TurnOutcome::Win => Some(cfg.scores.win + depth as i32),
+        TurnOutcome::Loss => Some(cfg.scores.loss - depth as i32),
+        TurnOutcome::Draw => Some(cfg.scores.draw),
+        TurnOutcome::HeadOnLoss => Some(cfg.scores.head_on_collision),
+    }
+}
+
+struct TurnUndo {
+    me: MoveUndo,
+    enemy: MoveUndo,
+}
+
+fn make_turn<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
     me: &mut AgentState,
-    side: usize,
-    mv: SearchMove,
+    enemy: &mut AgentState,
+    my_mv: SearchMove,
+    en_mv: SearchMove,
     zobrist: &Zobrist,
     current_hash: u64,
-) -> Option<u64>
+) -> (u64, TurnUndo)
 {
-    if me.body.is_empty() {
-        return None;
-    }
+    let (hash, my_undo) = make_move(grid, me, 0, my_mv, zobrist, current_hash);
+    let (hash, en_undo) = make_move(grid, enemy, 1, en_mv, zobrist, hash);
+    (
+        hash,
+        TurnUndo {
+            me: my_undo,
+            enemy: en_undo,
+        },
+    )
+}
 
-    let head = me.body.head();
-    let expected = head.moved(mv.dir);
-    if expected.x != mv.x || expected.y != mv.y {
-        return None;
-    }
-    if mv.x < 0 || mv.y < 0 || mv.x >= grid.width || mv.y >= grid.height {
-        return None;
-    }
-
-    Some(make_move(grid, me, side, mv, zobrist, current_hash).0)
+fn unmake_turn<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &mut AgentState, enemy: &mut AgentState, undo: TurnUndo) {
+    unmake_move(grid, enemy, undo.enemy);
+    unmake_move(grid, me, undo.me);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -410,60 +443,187 @@ pub fn reconstruct_pv<const W: usize, const N: usize>(
     zobrist: &Zobrist,
 ) -> Vec<Direction>
 {
-    if max_depth == 0 {
-        return Vec::new();
-    }
+    // Alternates my move and the enemy's reply, one pair per turn.
+    let mut pv = Vec::new();
+    let mut hash = root_hash;
 
-    let mut pv = Vec::with_capacity(max_depth.min(64));
-    let Some(mut current_hash) = apply_search_move(&mut grid, &mut me, 0, root_move, zobrist, root_hash) else {
-        return pv;
-    };
+    for turn in 0..max_depth.min(PV_MAX_TURNS) {
+        let remaining = max_depth - turn;
+        let entry = tt
+            .get(hash)
+            .filter(|e| e.flag == TT_FLAG_EXACT && (e.depth as usize) >= remaining);
 
-    pv.push(root_move.dir);
-    std::mem::swap(&mut me, &mut enemy);
+        // The root move is already decided; later turns follow the table.
+        let my_dir = if turn == 0 {
+            root_move.dir
+        } else if let Some(dir) = entry.and_then(|e| e.get_direction()) {
+            dir
+        } else {
+            break;
+        };
+        pv.push(my_dir);
 
-    let mut side = 1usize;
-    let mut remaining_depth = max_depth.saturating_sub(1);
+        let Some(reply_dir) = entry
+            .filter(|e| e.get_direction() == Some(my_dir))
+            .and_then(|e| e.get_reply_direction())
+        else {
+            break;
+        };
+        pv.push(reply_dir);
 
-    while remaining_depth > 0 && pv.len() < 64 {
-        if me.body.is_empty() || me.health <= 0 || enemy.body.is_empty() || enemy.health <= 0 {
+        let my_moves = get_safe_neighbors(&grid, &me, &enemy);
+        let en_moves = get_safe_neighbors(&grid, &enemy, &me);
+        let (Some(&my_mv), Some(&en_mv)) = (
+            my_moves.as_slice().iter().find(|m| m.dir == my_dir),
+            en_moves.as_slice().iter().find(|m| m.dir == reply_dir),
+        ) else {
+            break;
+        };
+        if resolve_turn(&grid, &me, &enemy, my_mv, en_mv) != TurnOutcome::Continue {
             break;
         }
-
-        let Some(entry) = tt.get(current_hash) else {
-            break;
-        };
-        if entry.flag != TT_FLAG_EXACT || (entry.depth as usize) < remaining_depth {
-            break;
-        }
-        let Some(dir) = entry.get_direction() else {
-            break;
-        };
-        if entry.mv_x == 255 || entry.mv_y == 255 {
-            break;
-        }
-
-        let mv = SearchMove {
-            x: entry.mv_x as i32,
-            y: entry.mv_y as i32,
-            dir,
-            dir_int: direction_index(dir),
-        };
-        let Some(next_hash) = apply_search_move(&mut grid, &mut me, side, mv, zobrist, current_hash) else {
-            break;
-        };
-
-        pv.push(dir);
-        std::mem::swap(&mut me, &mut enemy);
-        current_hash = next_hash;
-        side = 1 - side;
-        remaining_depth -= 1;
+        hash = make_turn(&mut grid, &mut me, &mut enemy, my_mv, en_mv, zobrist, hash).0;
     }
 
     pv
 }
 
-pub fn negamax<const W: usize, const N: usize>(
+fn order_moves<const W: usize, const N: usize>(moves: &mut MoveList, grid: &Grid<W, N>, head: Point, history: &[i32], hint: Option<Direction>) {
+    let head_idx = grid.idx(head.x, head.y);
+    moves.sort_by_cached_key(|m| {
+        let mut food = grid.food;
+        let mut food_dist = 1000;
+        while let Some(idx) = food.pop_first() {
+            let food_cell = Point {
+                x: (idx as i32) % grid.width,
+                y: (idx as i32) / grid.width,
+            };
+            food_dist = food_dist.min(manhattan(m.cell(), food_cell));
+        }
+        let center_dist = (2 * m.x - grid.width).abs() + (2 * m.y - grid.height).abs();
+        (Some(m.dir) != hint, Reverse(history[head_idx * 4 + m.dir_int]), food_dist, center_dist)
+    });
+}
+
+fn eat_bonus(my_ate: bool, en_ate: bool, cfg: &AiConfig) -> i32 {
+    (my_ate as i32 - en_ate as i32) * cfg.scores.eat_reward
+}
+
+fn is_decided(score: i32, cfg: &AiConfig) -> bool {
+    score.abs() >= cfg.scores.win.abs() / 10 * 9
+}
+
+fn apply_bonus(score: i32, bonus: i32, cfg: &AiConfig) -> i32 {
+    if is_decided(score, cfg) { score } else { score.saturating_add(bonus) }
+}
+
+fn remove_bonus(bound: i32, bonus: i32, cfg: &AiConfig) -> i32 {
+    if is_decided(bound, cfg) { bound } else { bound.saturating_sub(bonus) }
+}
+
+/// Root-only adjustments judged on the board after my move but before the enemy's reply.
+fn root_move_bonus<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
+    me: &mut AgentState,
+    enemy: &AgentState,
+    mv: SearchMove,
+    cfg: &AiConfig,
+    zobrist: &Zobrist,
+) -> i32
+{
+    let (_, undo) = make_move(grid, me, 0, mv, zobrist, 0);
+    let mut bonus = 0;
+
+    let continuation_moves = get_safe_neighbors(grid, me, enemy).count;
+    if continuation_moves == 0 {
+        bonus += cfg.scores.trap_danger;
+    }
+
+    let my_len = me.body.len();
+    let enemy_len = enemy.body.len();
+    let total_len = my_len + enemy_len;
+    let total_area = (grid.width * grid.height) as usize;
+    let dense_tail_race = my_len >= 20 && enemy_len >= 20 && (total_len * 100) / total_area >= cfg.dense_tail_race_occupancy;
+
+    if dense_tail_race && !enemy.body.is_empty() {
+        if continuation_moves == 1 && manhattan(mv.cell(), enemy.body.head()) <= 5 {
+            bonus -= cfg.scores.territory_control.abs() * 120;
+        }
+        if mv.cell() == enemy.body.last() {
+            bonus -= cfg.scores.territory_control.abs() * 2;
+        }
+    }
+
+    unmake_move(grid, me, undo);
+    bonus
+}
+
+struct ReplySearch<'a> {
+    my_mv: SearchMove,
+    replies: &'a [SearchMove],
+    /// Remaining depth of the node I am moving from (decides how much a decided turn is worth).
+    node_depth: usize,
+    /// Depth to search the resulting positions to (below `node_depth - 1` under late-move reduction).
+    child_depth: usize,
+    alpha: i32,
+    beta: i32,
+    hash: u64,
+    q_depth: usize,
+}
+
+fn worst_case_reply<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
+    me: &mut AgentState,
+    enemy: &mut AgentState,
+    query: &ReplySearch<'_>,
+    ctx: &mut SearchContext<'_>,
+) -> (i32, Direction)
+{
+    let cfg = ctx.cfg;
+    let my_ate = grid.food.get(grid.idx(query.my_mv.x, query.my_mv.y));
+    let mut beta = query.beta;
+    let mut worst = SCORE_MAX;
+    let mut worst_reply = query.replies[0].dir;
+
+    for &reply in query.replies {
+        let outcome = resolve_turn(grid, me, enemy, query.my_mv, reply);
+        let score = match outcome_score(outcome, query.node_depth, cfg) {
+            Some(score) => score,
+            None => {
+                let bonus = eat_bonus(my_ate, grid.food.get(grid.idx(reply.x, reply.y)), cfg);
+                let (hash, undo) = make_turn(grid, me, enemy, query.my_mv, reply, ctx.zobrist, query.hash);
+                let child = search(
+                    grid,
+                    me,
+                    enemy,
+                    SearchFrame {
+                        depth: query.child_depth,
+                        alpha: remove_bonus(query.alpha, bonus, cfg),
+                        beta: remove_bonus(beta, bonus, cfg),
+                        current_hash: hash,
+                        q_depth: query.q_depth,
+                    },
+                    ctx,
+                );
+                unmake_turn(grid, me, enemy, undo);
+                apply_bonus(child.score, bonus, cfg)
+            }
+        };
+
+        if score < worst {
+            worst = score;
+            worst_reply = reply.dir;
+        }
+        if worst <= query.alpha {
+            break;
+        }
+        beta = beta.min(worst);
+    }
+
+    (worst, worst_reply)
+}
+
+pub fn search<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
     me: &mut AgentState,
     enemy: &mut AgentState,
@@ -475,7 +635,6 @@ pub fn negamax<const W: usize, const N: usize>(
         depth,
         mut alpha,
         mut beta,
-        side,
         current_hash,
         q_depth,
     } = frame;
@@ -490,52 +649,33 @@ pub fn negamax<const W: usize, const N: usize>(
         && (entry.depth as usize) >= depth
     {
         match entry.flag {
-            TT_FLAG_EXACT => {
-                return SearchResult {
-                    score: entry.score,
-                    mv: None,
-                    children: Vec::new(),
-                };
-            }
+            TT_FLAG_EXACT => return SearchResult::leaf(entry.score),
             TT_FLAG_LOWER => alpha = alpha.max(entry.score),
             TT_FLAG_UPPER => beta = beta.min(entry.score),
             _ => {}
         }
         if alpha >= beta {
-            return SearchResult {
-                score: entry.score,
-                mv: None,
-                children: Vec::new(),
-            };
+            return SearchResult::leaf(entry.score);
         }
     }
 
     if me.body.is_empty() || me.health <= 0 {
-        return SearchResult {
-            score: ctx.cfg.scores.loss - depth as i32,
-            mv: None,
-            children: Vec::new(),
-        };
+        return SearchResult::leaf(ctx.cfg.scores.loss - depth as i32);
     }
     if enemy.body.is_empty() || enemy.health <= 0 {
-        return SearchResult {
-            score: ctx.cfg.scores.win + depth as i32,
-            mv: None,
-            children: Vec::new(),
-        };
+        return SearchResult::leaf(ctx.cfg.scores.win + depth as i32);
     }
 
     if depth == 0 {
-        if ctx.root_depth >= 3 && q_depth < QUIESCENCE_MAX_EXTENSIONS && should_extend_leaf(grid, me, enemy, ctx.cfg) {
-            return negamax(
+        if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS && should_extend_leaf(grid, me, enemy, ctx.cfg) {
+            return search(
                 grid,
                 me,
                 enemy,
                 SearchFrame {
-                    depth: 2,
+                    depth: 1,
                     alpha,
                     beta,
-                    side,
                     current_hash,
                     q_depth: q_depth + 1,
                 },
@@ -543,272 +683,133 @@ pub fn negamax<const W: usize, const N: usize>(
             );
         }
 
-        let score = if side == 0 {
-            evaluate(grid, me, enemy, ctx.cfg, ctx.buffers)
+        let score = evaluate(grid, me, enemy, ctx.cfg, ctx.buffers);
+        ctx.tt.set(current_hash, 0, score, TT_FLAG_EXACT, 255, 255, 255, 255);
+        return SearchResult::leaf(score);
+    }
+
+    let is_root = depth == ctx.root_depth;
+    let mut my_moves = get_safe_neighbors(grid, me, enemy);
+    let mut replies = get_safe_neighbors(grid, enemy, me);
+
+    if my_moves.count == 0 {
+        let enemy_doomed = replies.as_slice().iter().all(|&reply| starves(grid, enemy.health, reply));
+        let score = if enemy_doomed {
+            ctx.cfg.scores.draw
         } else {
-            -evaluate(grid, enemy, me, ctx.cfg, ctx.buffers)
+            ctx.cfg.scores.loss - depth as i32
         };
+        return SearchResult::leaf(score);
+    }
 
-        ctx.tt.set(current_hash, 0, score, TT_FLAG_EXACT, 255, 255, 255);
+    let my_head = me.body.head();
+    let en_head = enemy.body.head();
+    order_moves(
+        &mut my_moves,
+        grid,
+        my_head,
+        &ctx.history_table[0],
+        tt_entry.and_then(|e| e.get_direction()),
+    );
+    order_moves(
+        &mut replies,
+        grid,
+        en_head,
+        &ctx.history_table[1],
+        tt_entry.and_then(|e| e.get_reply_direction()),
+    );
 
+    if replies.count == 0 {
+        // The enemy is dead whatever it does; I only need a move that does not starve me too.
+        let survivor = my_moves.as_slice().iter().copied().find(|&mv| !starves(grid, me.health, mv));
         return SearchResult {
-            score,
-            mv: None,
+            score: if survivor.is_some() { ctx.cfg.scores.win + depth as i32 } else { ctx.cfg.scores.draw },
+            mv: Some(survivor.unwrap_or(my_moves.as_slice()[0])),
             children: Vec::new(),
         };
     }
 
-    let is_root = ctx.root_depth == depth && side == 0;
-    let head = me.body.head();
-    let head_idx = (head.y * grid.width + head.x) as usize;
-    let mut move_list = get_safe_neighbors(grid, me, enemy);
-
-    if move_list.count == 0 {
-        return SearchResult {
-            score: ctx.cfg.scores.loss - depth as i32,
-            mv: None,
-            children: Vec::new(),
-        };
+    if is_root && ctx.thread_id > 0 {
+        let shift = ctx.thread_id % my_moves.count;
+        my_moves.as_mut_slice().rotate_left(shift);
     }
 
-    let moves = move_list.as_mut_slice();
-    let (pv_x, pv_y) = if let Some(e) = tt_entry {
-        if e.mv_x != 255 {
-            (Some(e.mv_x as i32), Some(e.mv_y as i32))
-        } else {
-            (None, None)
-        }
-    } else {
-        (None, None)
-    };
-
-    if moves.len() > 1 {
-        let history_table = &*ctx.history_table;
-        moves.sort_unstable_by(|a, b| {
-            if let (Some(px), Some(py)) = (pv_x, pv_y) {
-                if a.x == px && a.y == py {
-                    return std::cmp::Ordering::Less;
-                }
-                if b.x == px && b.y == py {
-                    return std::cmp::Ordering::Greater;
-                }
-            }
-
-            let hist_a = history_table[side][head_idx * 4 + a.dir_int];
-            let hist_b = history_table[side][head_idx * 4 + b.dir_int];
-            if hist_a != hist_b {
-                return hist_b.cmp(&hist_a);
-            }
-
-            let mut min_a = 1000;
-            let mut min_b = 1000;
-
-            let mut temp_food = grid.food;
-            while let Some(idx) = temp_food.pop_first() {
-                let fx = (idx as i32) % grid.width;
-                let fy = (idx as i32) / grid.width;
-                let da = (a.x - fx).abs() + (a.y - fy).abs();
-                let db = (b.x - fx).abs() + (b.y - fy).abs();
-                min_a = min_a.min(da);
-                min_b = min_b.min(db);
-            }
-
-            if min_a == min_b {
-                let cx = grid.width as f64 / 2.0;
-                let cy = grid.height as f64 / 2.0;
-                let ca = (a.x as f64 - cx).abs() + (a.y as f64 - cy).abs();
-                let cb = (b.x as f64 - cx).abs() + (b.y as f64 - cy).abs();
-                return ca.partial_cmp(&cb).unwrap_or(std::cmp::Ordering::Equal);
-            }
-            min_a.cmp(&min_b)
-        });
-
-        if is_root && ctx.thread_id > 0 {
-            let shift = ctx.thread_id % moves.len();
-            moves.rotate_left(shift);
-        }
-    }
+    let my_moves = my_moves.as_slice();
+    let replies = replies.as_slice();
 
     let mut child_records = if is_root && ctx.collect_root_children {
-        Vec::with_capacity(moves.len())
+        Vec::with_capacity(my_moves.len())
     } else {
         Vec::new()
     };
-    let mut best_move = moves[0];
+    let cfg = ctx.cfg;
+    let (my_len, en_len) = (me.body.len(), enemy.body.len());
+    let mut best_move = my_moves[0];
+    let mut best_reply = replies[0].dir;
     let mut best_score = SCORE_MIN;
     let mut best_tie_break = SCORE_MIN;
 
-    for (i, &mv) in moves.iter().enumerate() {
-        let mut collision_penalty = 0;
-        let mut kill_threat_bonus = 0;
-        if side == 0 && !enemy.body.is_empty() {
-            let opp_head = enemy.body.head();
-            let dist = (mv.x - opp_head.x).abs() + (mv.y - opp_head.y).abs();
-            if dist == 1 {
-                let my_len = me.body.len();
-                let opp_len = enemy.body.len();
-                if opp_len > my_len {
-                    collision_penalty = ctx.cfg.scores.head_on_collision;
-                } else if opp_len == my_len {
-                    collision_penalty = ctx.cfg.scores.draw;
-                } else {
-                    kill_threat_bonus = ctx.cfg.scores.kill_pressure;
-                }
-            }
-        }
-
-        let tie_break = if is_root {
-            root_tie_breaker(me, enemy, grid.width, grid.height, mv)
+    for (i, &mv) in my_moves.iter().enumerate() {
+        let (tie_break, root_bonus) = if is_root {
+            (
+                root_tie_breaker(me, enemy, grid.width, grid.height, mv),
+                root_move_bonus(grid, me, enemy, mv, ctx.cfg, ctx.zobrist),
+            )
         } else {
-            0
+            (0, 0)
+        };
+        let ate_food = grid.food.get(grid.idx(mv.x, mv.y));
+        // Stepping next to the enemy's head is only a threat if I would win the collision.
+        let contested = manhattan(mv.cell(), en_head) == 1;
+        let crowding = if contested && my_len > en_len { cfg.scores.kill_pressure } else { 0 };
+        let value_of = |raw_score: i32| apply_bonus(raw_score, crowding, cfg).saturating_add(root_bonus);
+
+        // Searches `mv` against every reply. The bonuses are added to the result, so they are taken
+        // off the window here, exactly as `value_of` puts them on.
+        let raw_bound = |bound: i32| remove_bonus(bound.saturating_sub(root_bonus), crowding, cfg);
+        let probe = |child_depth: usize, alpha: i32, beta: i32| ReplySearch {
+            my_mv: mv,
+            replies,
+            node_depth: depth,
+            child_depth,
+            alpha: raw_bound(alpha),
+            beta: raw_bound(beta),
+            hash: current_hash,
+            q_depth,
         };
 
-        let (next_hash, undo) = make_move(grid, me, side, mv, ctx.zobrist, current_hash);
-        let ate_food = undo.ate_food();
-
-        // Evaluate root bonuses while the move is applied and board is accurately updated
-        let mut root_bonus = 0;
-        if is_root {
-            let continuation_moves = get_safe_neighbors(grid, me, enemy).count;
-            if continuation_moves == 0 {
-                root_bonus += ctx.cfg.scores.trap_danger;
-            }
-
-            let my_len = me.body.len();
-            let enemy_len = enemy.body.len();
-            let total_len = my_len + enemy_len;
-            let total_area = (grid.width * grid.height) as usize;
-            let dense_tail_race = my_len >= 20 && enemy_len >= 20 && (total_len * 100) / total_area >= ctx.cfg.dense_tail_race_occupancy;
-
-            if dense_tail_race && !enemy.body.is_empty() {
-                let enemy_head = enemy.body.head();
-                let enemy_head_dist = (mv.x - enemy_head.x).abs() + (mv.y - enemy_head.y).abs();
-                if continuation_moves == 1 && enemy_head_dist <= 5 {
-                    root_bonus -= ctx.cfg.scores.territory_control.abs() * 120;
-                }
-                let enemy_tail = enemy.body.last();
-                if mv.x == enemy_tail.x && mv.y == enemy_tail.y {
-                    root_bonus -= ctx.cfg.scores.territory_control.abs() * 2;
+        let (raw_score, reply) = if i == 0 {
+            worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, beta), ctx)
+        } else {
+            let mut reduced = None;
+            if depth >= LMR_MIN_DEPTH && !ate_food && !contested {
+                let probed = worst_case_reply(grid, me, enemy, &probe(depth - 1 - LMR_REDUCTION, alpha, alpha + 1), ctx);
+                let score = value_of(probed.0);
+                if score < alpha && score <= LMR_MASSIVE_WIN {
+                    reduced = Some(probed);
                 }
             }
-        }
 
-        let calc_mod_score = |c_score: i32| -> i32 {
-            let mut ms = -c_score;
-            if collision_penalty < 0 {
-                ms = ms.min(collision_penalty);
-            }
-            let terminal_band = ms.abs() >= (ctx.cfg.scores.win.abs() / 10) * 9;
-            if !terminal_band {
-                if kill_threat_bonus > 0 {
-                    ms = ms.saturating_add(kill_threat_bonus);
-                }
-                if ate_food && ms > -50_000_000 {
-                    ms = ms.saturating_add(ctx.cfg.scores.eat_reward);
+            match reduced {
+                Some(result) => result,
+                None => {
+                    let probed = worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, alpha + 1), ctx);
+                    let score = value_of(probed.0);
+                    if score > alpha && score < beta {
+                        worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, beta), ctx)
+                    } else {
+                        probed
+                    }
                 }
             }
-            ms.saturating_add(root_bonus)
         };
 
-        let mut child_score = 0;
-
-        if i == 0 {
-            // PV Move
-            let child = negamax(
-                grid,
-                enemy,
-                me,
-                SearchFrame {
-                    depth: depth - 1,
-                    alpha: -beta,
-                    beta: -alpha,
-                    side: 1 - side,
-                    current_hash: next_hash,
-                    q_depth,
-                },
-                ctx,
-            );
-            child_score = child.score;
-        } else {
-            let mut needs_full_search = true;
-
-            // LMR
-            if depth >= 5 && !ate_food && collision_penalty == 0 && kill_threat_bonus == 0 {
-                let r = 2;
-
-                let child_lmr = negamax(
-                    grid,
-                    enemy,
-                    me,
-                    SearchFrame {
-                        depth: depth - 1 - r,
-                        alpha: -alpha - 1,
-                        beta: -alpha,
-                        side: 1 - side,
-                        current_hash: next_hash,
-                        q_depth,
-                    },
-                    ctx,
-                );
-
-                let temp_mod_lmr = calc_mod_score(child_lmr.score);
-
-                let is_massive_win = temp_mod_lmr > 50_000_000;
-
-                if temp_mod_lmr < alpha && !is_massive_win {
-                    child_score = child_lmr.score;
-                    needs_full_search = false;
-                }
-            }
-
-            // PVS ZERO-WINDOW SEARCH
-            if needs_full_search {
-                let child = negamax(
-                    grid,
-                    enemy,
-                    me,
-                    SearchFrame {
-                        depth: depth - 1,
-                        alpha: -alpha - 1,
-                        beta: -alpha,
-                        side: 1 - side,
-                        current_hash: next_hash,
-                        q_depth,
-                    },
-                    ctx,
-                );
-                child_score = child.score;
-
-                let temp_mod = calc_mod_score(child_score);
-                if temp_mod > alpha && temp_mod < beta {
-                    let child_re = negamax(
-                        grid,
-                        enemy,
-                        me,
-                        SearchFrame {
-                            depth: depth - 1,
-                            alpha: -beta,
-                            beta: -alpha,
-                            side: 1 - side,
-                            current_hash: next_hash,
-                            q_depth,
-                        },
-                        ctx,
-                    );
-                    child_score = child_re.score;
-                }
-            }
-        }
-
-        let modified_score = calc_mod_score(child_score);
-
-        unmake_move(grid, me, undo);
+        let modified_score = value_of(raw_score);
 
         if is_root && ctx.collect_root_children {
             child_records.push(RootChildRecord {
                 mv,
-                raw_recursion_score: child_score,
-                collision_penalty,
+                raw_recursion_score: raw_score,
                 ate: ate_food,
                 modified_score,
             });
@@ -817,6 +818,7 @@ pub fn negamax<const W: usize, const N: usize>(
         if modified_score > best_score || (modified_score == best_score && tie_break > best_tie_break) {
             best_score = modified_score;
             best_move = mv;
+            best_reply = reply;
             best_tie_break = tie_break;
         }
         if best_score > alpha {
@@ -827,20 +829,16 @@ pub fn negamax<const W: usize, const N: usize>(
         }
     }
 
-    ctx.history_table[side][head_idx * 4 + best_move.dir_int] += (depth * depth) as i32;
+    let history_bonus = (depth * depth) as i32;
+    ctx.history_table[0][grid.idx(my_head.x, my_head.y) * 4 + best_move.dir_int] += history_bonus;
+    ctx.history_table[1][grid.idx(en_head.x, en_head.y) * 4 + direction_index(best_reply)] += history_bonus;
+
     let tt_flag = if best_score <= original_alpha {
         TT_FLAG_UPPER
     } else if best_score >= beta {
         TT_FLAG_LOWER
     } else {
         TT_FLAG_EXACT
-    };
-
-    let dir_byte = match best_move.dir {
-        Direction::Up => 0,
-        Direction::Down => 1,
-        Direction::Left => 2,
-        Direction::Right => 3,
     };
 
     ctx.tt.set(
@@ -850,7 +848,8 @@ pub fn negamax<const W: usize, const N: usize>(
         tt_flag,
         best_move.x as u8,
         best_move.y as u8,
-        dir_byte,
+        best_move.dir_int as u8,
+        direction_index(best_reply) as u8,
     );
 
     SearchResult {

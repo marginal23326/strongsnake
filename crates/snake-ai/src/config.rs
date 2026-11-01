@@ -58,13 +58,6 @@ pub struct AiConfig {
     pub scores: ScoreConfig,
 }
 
-impl AiConfig {
-    #[inline]
-    pub fn search_plies(&self) -> usize {
-        self.max_depth * 2
-    }
-}
-
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
