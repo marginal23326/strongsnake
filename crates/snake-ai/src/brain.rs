@@ -9,7 +9,7 @@ use crate::{
     floodfill::flood_fill,
     grid::Grid,
     model::AgentState,
-    search::{RootChildRecord, SearchContext, SearchFrame, reconstruct_pv, search},
+    search::{RootChildRecord, SearchContext, SearchFrame, prefer_hopeful_move, reconstruct_pv, search},
     tt::TranspositionTable,
     zobrist::Zobrist,
 };
@@ -250,7 +250,7 @@ fn execute_search_task<const W: usize, const N: usize>(
         nodes_searched: 0,
     };
 
-    let result = search(
+    let mut result = search(
         &mut task.grid,
         &mut task.me,
         &mut task.enemy,
@@ -263,6 +263,12 @@ fn execute_search_task<const W: usize, const N: usize>(
         },
         &mut search_ctx,
     );
+
+    if thread_id == 0
+        && let Some(mv) = prefer_hopeful_move(&mut task.grid, &mut task.me, &mut task.enemy, task.initial_hash, &result, &mut search_ctx)
+    {
+        result.mv = Some(mv);
+    }
 
     crate::PERF_STATS.with(|s| s.borrow_mut().nodes += search_ctx.nodes_searched);
     let stats = crate::PERF_STATS.with(|s| s.take());

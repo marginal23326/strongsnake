@@ -1,0 +1,262 @@
+{
+  "id": "060",
+  "name": "060_hopeful_move_when_lost_2",
+  "board": {
+    "width": 11,
+    "height": 11,
+    "food": [
+      {
+        "x": 9,
+        "y": 10
+      },
+      {
+        "x": 2,
+        "y": 0
+      },
+      {
+        "x": 4,
+        "y": 0
+      },
+      {
+        "x": 0,
+        "y": 0
+      },
+      {
+        "x": 10,
+        "y": 4
+      },
+      {
+        "x": 1,
+        "y": 0
+      },
+      {
+        "x": 3,
+        "y": 0
+      },
+      {
+        "x": 10,
+        "y": 5
+      },
+      {
+        "x": 0,
+        "y": 3
+      },
+      {
+        "x": 9,
+        "y": 0
+      },
+      {
+        "x": 5,
+        "y": 0
+      },
+      {
+        "x": 6,
+        "y": 0
+      },
+      {
+        "x": 4,
+        "y": 1
+      },
+      {
+        "x": 7,
+        "y": 0
+      },
+      {
+        "x": 10,
+        "y": 6
+      },
+      {
+        "x": 10,
+        "y": 9
+      },
+      {
+        "x": 0,
+        "y": 7
+      },
+      {
+        "x": 2,
+        "y": 2
+      },
+      {
+        "x": 8,
+        "y": 0
+      },
+      {
+        "x": 0,
+        "y": 1
+      }
+    ],
+    "snakes": [
+      {
+        "id": "ai",
+        "name": "AI",
+        "body": [
+          {
+            "x": 0,
+            "y": 8
+          },
+          {
+            "x": 0,
+            "y": 9
+          },
+          {
+            "x": 0,
+            "y": 10
+          },
+          {
+            "x": 1,
+            "y": 10
+          },
+          {
+            "x": 2,
+            "y": 10
+          },
+          {
+            "x": 3,
+            "y": 10
+          },
+          {
+            "x": 4,
+            "y": 10
+          },
+          {
+            "x": 5,
+            "y": 10
+          },
+          {
+            "x": 6,
+            "y": 10
+          },
+          {
+            "x": 7,
+            "y": 10
+          },
+          {
+            "x": 7,
+            "y": 9
+          },
+          {
+            "x": 6,
+            "y": 9
+          },
+          {
+            "x": 5,
+            "y": 9
+          },
+          {
+            "x": 4,
+            "y": 9
+          },
+          {
+            "x": 3,
+            "y": 9
+          },
+          {
+            "x": 2,
+            "y": 9
+          },
+          {
+            "x": 1,
+            "y": 9
+          }
+        ],
+        "health": 100
+      },
+      {
+        "id": "player",
+        "name": "Player",
+        "body": [
+          {
+            "x": 2,
+            "y": 8
+          },
+          {
+            "x": 3,
+            "y": 8
+          },
+          {
+            "x": 3,
+            "y": 7
+          },
+          {
+            "x": 4,
+            "y": 7
+          },
+          {
+            "x": 4,
+            "y": 8
+          },
+          {
+            "x": 5,
+            "y": 8
+          },
+          {
+            "x": 5,
+            "y": 7
+          },
+          {
+            "x": 6,
+            "y": 7
+          },
+          {
+            "x": 7,
+            "y": 7
+          },
+          {
+            "x": 7,
+            "y": 6
+          },
+          {
+            "x": 6,
+            "y": 6
+          },
+          {
+            "x": 5,
+            "y": 6
+          },
+          {
+            "x": 4,
+            "y": 6
+          },
+          {
+            "x": 3,
+            "y": 6
+          },
+          {
+            "x": 2,
+            "y": 6
+          },
+          {
+            "x": 1,
+            "y": 6
+          },
+          {
+            "x": 0,
+            "y": 6
+          },
+          {
+            "x": 0,
+            "y": 5
+          },
+          {
+            "x": 1,
+            "y": 5
+          },
+          {
+            "x": 1,
+            "y": 4
+          }
+        ],
+        "health": 98
+      }
+    ]
+  },
+  "you_id": "ai",
+  "expectation": {
+    "kind": "avoid",
+    "directions": [
+      "down"
+    ]
+  },
+  "description": "Lost against best play: an exhaustive search shows every move dies if the opponent replies perfectly (11x11, lengths 17 vs 20), but right survives more of the enemy's replies than down at every horizon from 10 to 16 turns. Choose the move that gives an imperfect opponent the most ways to go wrong, not the one that dies last."
+}

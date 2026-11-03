@@ -547,6 +547,78 @@ fn worst_case_reply<const W: usize, const N: usize>(
     (worst, worst_reply)
 }
 
+fn is_proven_loss(score: i32, cfg: &AiConfig) -> bool {
+    score < 0 && is_decided(score, cfg)
+}
+
+pub fn prefer_hopeful_move<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
+    me: &mut AgentState,
+    enemy: &mut AgentState,
+    root_hash: u64,
+    root: &SearchResult,
+    ctx: &mut SearchContext<'_>,
+) -> Option<SearchMove>
+{
+    let cfg = ctx.cfg;
+    let depth = ctx.root_depth;
+    let preferred = root.mv?;
+    if depth == 0 || !is_proven_loss(root.score, cfg) {
+        return None;
+    }
+
+    let my_moves = get_safe_neighbors(grid, me, enemy);
+    let replies = get_safe_neighbors(grid, enemy, me);
+    if my_moves.count < 2 || replies.count < 2 {
+        return None;
+    }
+
+    let mut best = (preferred, (i32::MIN, i32::MIN));
+    let candidates = std::iter::once(preferred).chain(my_moves.as_slice().iter().copied().filter(|m| m.dir_int != preferred.dir_int));
+    for mv in candidates {
+        let my_ate = grid.food.get(grid.idx(mv.x, mv.y));
+        let (mut hope, mut worst) = (0, SCORE_MAX);
+        for &reply in replies.as_slice() {
+            let outcome = resolve_turn(grid, me, enemy, mv, reply);
+            let (points, score) = match outcome_score(outcome, depth, cfg) {
+                Some(score) => (if outcome == TurnOutcome::Win { 2 } else if outcome == TurnOutcome::Draw { 1 } else { 0 }, score),
+                None => {
+                    let bonus = eat_bonus(my_ate, grid.food.get(grid.idx(reply.x, reply.y)), cfg);
+                    let (hash, undo) = make_turn(grid, me, enemy, mv, reply, ctx.zobrist, root_hash);
+                    let child = search(
+                        grid,
+                        me,
+                        enemy,
+                        SearchFrame {
+                            depth: depth - 1,
+                            alpha: SCORE_MIN,
+                            beta: SCORE_MAX,
+                            current_hash: hash,
+                            q_depth: 0,
+                        },
+                        ctx,
+                    );
+                    unmake_turn(grid, me, enemy, undo);
+                    let points = if is_proven_loss(child.score, cfg) {
+                        0
+                    } else if child.score == cfg.scores.draw {
+                        1
+                    } else {
+                        2
+                    };
+                    (points, apply_bonus(child.score, bonus, cfg))
+                }
+            };
+            hope += points;
+            worst = worst.min(score);
+        }
+        if (hope, worst) > best.1 {
+            best = (mv, (hope, worst));
+        }
+    }
+    Some(best.0)
+}
+
 pub fn search<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
     me: &mut AgentState,
