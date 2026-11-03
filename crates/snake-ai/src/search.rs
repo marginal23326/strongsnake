@@ -47,9 +47,8 @@ impl SearchMove {
 #[derive(Debug, Clone)]
 pub struct RootChildRecord {
     pub mv: SearchMove,
-    pub raw_recursion_score: i32,
+    pub score: i32,
     pub ate: bool,
-    pub modified_score: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -185,37 +184,6 @@ fn manhattan(a: Point, b: Point) -> i32 {
     (a.x - b.x).abs() + (a.y - b.y).abs()
 }
 
-const TAIL_HUG_MIN_LEN: usize = 20;
-const TAIL_HUG_OCCUPANCY_PERCENT: usize = 40;
-const TAIL_HUG_WEIGHT: i32 = 10;
-const ENEMY_TAIL_STEP_PENALTY: i32 = 5;
-
-/// Breaks exact score ties at the root; it never overrides a better move.
-fn root_tie_breaker(me: &AgentState, enemy: &AgentState, cols: i32, rows: i32, mv: SearchMove) -> i32 {
-    if me.body.is_empty() {
-        return 0;
-    }
-
-    let mut tie_break = 0;
-
-    if !enemy.body.is_empty() && mv.cell() == enemy.body.last() {
-        tie_break -= ENEMY_TAIL_STEP_PENALTY;
-    }
-
-    let (my_len, enemy_len) = (me.body.len(), enemy.body.len());
-    let area = (cols * rows) as usize;
-    if cols > 0
-        && rows > 0
-        && my_len >= TAIL_HUG_MIN_LEN
-        && enemy_len >= TAIL_HUG_MIN_LEN
-        && (my_len + enemy_len) * 100 >= TAIL_HUG_OCCUPANCY_PERCENT * area
-    {
-        tie_break -= manhattan(mv.cell(), me.body.last()) * TAIL_HUG_WEIGHT;
-    }
-
-    tie_break
-}
-
 fn should_extend_leaf<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> bool
 {
     let area = (grid.width * grid.height) as usize;
@@ -348,7 +316,6 @@ enum TurnOutcome {
     Win,
     Loss,
     Draw,
-    HeadOnLoss,
 }
 
 fn resolve_turn<const W: usize, const N: usize>(
@@ -364,13 +331,11 @@ fn resolve_turn<const W: usize, const N: usize>(
 
     let mut me_dead = starves(grid, me.health, my_mv);
     let mut en_dead = starves(grid, enemy.health, en_mv);
-    let mut lost_head_on = false;
 
     if my_mv.cell() == en_mv.cell() {
         // Head-to-head: the longer snake (counting this turn's growth) survives, equal lengths both die.
         let my_len = me.body.len() + my_eats as usize;
         let en_len = enemy.body.len() + en_eats as usize;
-        lost_head_on = my_len <= en_len && !me_dead;
         me_dead |= my_len <= en_len;
         en_dead |= en_len <= my_len;
     } else {
@@ -382,7 +347,6 @@ fn resolve_turn<const W: usize, const N: usize>(
     match (me_dead, en_dead) {
         (false, false) => TurnOutcome::Continue,
         (false, true) => TurnOutcome::Win,
-        (true, false) if lost_head_on => TurnOutcome::HeadOnLoss,
         (true, false) => TurnOutcome::Loss,
         (true, true) => TurnOutcome::Draw,
     }
@@ -394,7 +358,6 @@ fn outcome_score(outcome: TurnOutcome, depth: usize, cfg: &AiConfig) -> Option<i
         TurnOutcome::Win => Some(cfg.scores.win + depth as i32),
         TurnOutcome::Loss => Some(cfg.scores.loss - depth as i32),
         TurnOutcome::Draw => Some(cfg.scores.draw),
-        TurnOutcome::HeadOnLoss => Some(cfg.scores.head_on_collision),
     }
 }
 
@@ -517,43 +480,6 @@ fn apply_bonus(score: i32, bonus: i32, cfg: &AiConfig) -> i32 {
 
 fn remove_bonus(bound: i32, bonus: i32, cfg: &AiConfig) -> i32 {
     if is_decided(bound, cfg) { bound } else { bound.saturating_sub(bonus) }
-}
-
-const DENSE_SQUEEZE_CELLS: i32 = 120;
-const DENSE_SQUEEZE_RADIUS: i32 = 5;
-const DENSE_ENEMY_TAIL_CELLS: i32 = 2;
-
-/// Root-only penalty in dense tail races for squeezing my exit down to one cell near the enemy head,
-/// or stepping onto the enemy's tail. Scenarios 045 and 013 depend on it.
-fn dense_race_root_penalty<const W: usize, const N: usize>(
-    grid: &mut Grid<W, N>,
-    me: &mut AgentState,
-    enemy: &AgentState,
-    mv: SearchMove,
-    cfg: &AiConfig,
-    zobrist: &Zobrist,
-) -> i32
-{
-    let my_len = me.body.len() + grid.food.get(grid.idx(mv.x, mv.y)) as usize;
-    let area = (grid.width * grid.height) as usize;
-    if !is_dense_tail_race(my_len, enemy.body.len(), area, cfg) {
-        return 0;
-    }
-
-    let unit = cfg.scores.territory_control;
-    let mut penalty = 0;
-
-    let (_, undo) = make_move(grid, me, 0, mv, zobrist, 0);
-    let continuation_moves = get_safe_neighbors(grid, me, enemy).count;
-    unmake_move(grid, me, undo);
-
-    if continuation_moves == 1 && manhattan(mv.cell(), enemy.body.head()) <= DENSE_SQUEEZE_RADIUS {
-        penalty -= unit * DENSE_SQUEEZE_CELLS;
-    }
-    if mv.cell() == enemy.body.last() {
-        penalty -= unit * DENSE_ENEMY_TAIL_CELLS;
-    }
-    penalty
 }
 
 struct ReplySearch<'a> {
@@ -740,37 +666,19 @@ pub fn search<const W: usize, const N: usize>(
     } else {
         Vec::new()
     };
-    let cfg = ctx.cfg;
-    let (my_len, en_len) = (me.body.len(), enemy.body.len());
     let mut best_move = my_moves[0];
     let mut best_reply = replies[0].dir;
     let mut best_score = SCORE_MIN;
-    let mut best_tie_break = SCORE_MIN;
 
     for (i, &mv) in my_moves.iter().enumerate() {
-        let (tie_break, root_penalty) = if is_root {
-            (
-                root_tie_breaker(me, enemy, grid.width, grid.height, mv),
-                dense_race_root_penalty(grid, me, enemy, mv, ctx.cfg, ctx.zobrist),
-            )
-        } else {
-            (0, 0)
-        };
         let ate_food = grid.food.get(grid.idx(mv.x, mv.y));
-        // Moves next to the enemy head are never reduced. The `kill_pressure` bonus here and at leaves are both needed (scenario 038).
-        let contested = manhattan(mv.cell(), en_head) == 1;
-        let crowding = if contested && my_len > en_len { cfg.scores.kill_pressure } else { 0 };
-        let value_of = |raw_score: i32| apply_bonus(raw_score, crowding, cfg).saturating_add(root_penalty);
-
-        // The bonuses are taken off the window here, as `value_of` puts them on.
-        let raw_bound = |bound: i32| remove_bonus(bound.saturating_sub(root_penalty), crowding, cfg);
         let probe = |child_depth: usize, alpha: i32, beta: i32| ReplySearch {
             my_mv: mv,
             replies,
             node_depth: depth,
             child_depth,
-            alpha: raw_bound(alpha),
-            beta: raw_bound(beta),
+            alpha,
+            beta,
             hash: current_hash,
             q_depth,
         };
@@ -779,9 +687,9 @@ pub fn search<const W: usize, const N: usize>(
             worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, beta), ctx)
         } else {
             let mut reduced = None;
-            if depth >= LMR_MIN_DEPTH && !ate_food && !contested {
+            if depth >= LMR_MIN_DEPTH && !ate_food {
                 let probed = worst_case_reply(grid, me, enemy, &probe(depth - 1 - LMR_REDUCTION, alpha, alpha + 1), ctx);
-                let score = value_of(probed.0);
+                let score = probed.0;
                 if score < alpha && score <= LMR_MASSIVE_WIN {
                     reduced = Some(probed);
                 }
@@ -791,7 +699,7 @@ pub fn search<const W: usize, const N: usize>(
                 Some(result) => result,
                 None => {
                     let probed = worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, alpha + 1), ctx);
-                    let score = value_of(probed.0);
+                    let score = probed.0;
                     if score > alpha && score < beta {
                         worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, beta), ctx)
                     } else {
@@ -801,22 +709,18 @@ pub fn search<const W: usize, const N: usize>(
             }
         };
 
-        let modified_score = value_of(raw_score);
-
         if is_root && ctx.collect_root_children {
             child_records.push(RootChildRecord {
                 mv,
-                raw_recursion_score: raw_score,
+                score: raw_score,
                 ate: ate_food,
-                modified_score,
             });
         }
 
-        if modified_score > best_score || (modified_score == best_score && tie_break > best_tie_break) {
-            best_score = modified_score;
+        if raw_score > best_score {
+            best_score = raw_score;
             best_move = mv;
             best_reply = reply;
-            best_tie_break = tie_break;
         }
         if best_score > alpha {
             alpha = best_score;

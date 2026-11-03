@@ -11,51 +11,36 @@ pub(super) struct GeneSpec {
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum GeneKey {
-    TightSpot,
     Length,
     EatReward,
-    KillPressure,
     FoodIntensity,
     FoodThreshold,
     FoodExponent,
-    Aggression,
 }
 
 impl GeneKey {
     fn read(self, cfg: &AiConfig) -> f64 {
         match self {
-            Self::TightSpot => cfg.scores.tight_spot as f64,
             Self::Length => cfg.scores.length as f64,
             Self::EatReward => cfg.scores.eat_reward as f64,
-            Self::KillPressure => cfg.scores.kill_pressure as f64,
             Self::FoodIntensity => cfg.scores.food.intensity,
             Self::FoodThreshold => cfg.scores.food.threshold,
             Self::FoodExponent => cfg.scores.food.exponent,
-            Self::Aggression => cfg.scores.aggression as f64,
         }
     }
 
     fn write(self, cfg: &mut AiConfig, value: f64) {
         match self {
-            Self::TightSpot => cfg.scores.tight_spot = value.round() as i32,
             Self::Length => cfg.scores.length = value.round() as i32,
             Self::EatReward => cfg.scores.eat_reward = value.round() as i32,
-            Self::KillPressure => cfg.scores.kill_pressure = value.round() as i32,
             Self::FoodIntensity => cfg.scores.food.intensity = value,
             Self::FoodThreshold => cfg.scores.food.threshold = value,
             Self::FoodExponent => cfg.scores.food.exponent = value,
-            Self::Aggression => cfg.scores.aggression = value.round() as i32,
         }
     }
 }
 
-const GENE_SPECS: [GeneSpec; 8] = [
-    GeneSpec {
-        key: GeneKey::TightSpot,
-        min: -100_000.0,
-        max: -10_000.0,
-        is_int: true,
-    },
+const GENE_SPECS: [GeneSpec; 5] = [
     GeneSpec {
         key: GeneKey::Length,
         min: 0.0,
@@ -66,12 +51,6 @@ const GENE_SPECS: [GeneSpec; 8] = [
         key: GeneKey::EatReward,
         min: 100.0,
         max: 10_000.0,
-        is_int: true,
-    },
-    GeneSpec {
-        key: GeneKey::KillPressure,
-        min: 50_000.0,
-        max: 500_000.0,
         is_int: true,
     },
     GeneSpec {
@@ -91,12 +70,6 @@ const GENE_SPECS: [GeneSpec; 8] = [
         min: 1.0,
         max: 3.0,
         is_int: false,
-    },
-    GeneSpec {
-        key: GeneKey::Aggression,
-        min: 100.0,
-        max: 10_000.0,
-        is_int: true,
     },
 ];
 
