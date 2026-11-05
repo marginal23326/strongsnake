@@ -1,0 +1,16 @@
+[package]
+name = "harness"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+snake-domain = { path = "../base/crates/snake-domain" }
+snake_ai_base = { package = "snake-ai", path = "../base/crates/snake-ai" }
+snake_ai_cand = { package = "snake-ai-cand", path = "../cand/crates/snake-ai" }
+snake_domain_cand = { package = "snake-domain-cand", path = "../cand/crates/snake-domain" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
