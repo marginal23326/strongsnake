@@ -1,0 +1,85 @@
+# Equal-depth match between two variants of the current engine (bench-depth/prepare.sh lists them). Side A is `cand`,
+# side B is `base`; both search to the same fixed depth, and nothing else differs between them. Run it from the Actions tab.
+# 20 runners x 3 workers play for `minutes` each, so the game count is about 20 * 3 * (minutes*60 / seconds per pair) * 2.
+name: bench-depth
+
+on:
+  workflow_dispatch:
+    inputs:
+      depth:
+        description: "Search depth of both sides"
+        default: "5"
+      boards:
+        description: "Comma-separated boards; workers cycle through them (e.g. 11x11,11x11,16x9 weights 11x11 double)"
+        default: "11x11,16x9"
+      minutes:
+        description: "How long each worker keeps playing new pairs (the job also needs a few minutes to build and upload)"
+        default: "60"
+      max_turns:
+        description: "Turn cap. A game that reaches it with both snakes alive is decided by length, which is an arbitrary rule; raise it to see how long games really end"
+        default: "1500"
+      cand:
+        description: "Side A variant (see bench-depth/prepare.sh): none, lmr_off, lmr_d4, lmr_d5, lmr_r2, lmr_no_root, no_hopeful, id, qrule, force_w3, force_w7; combine with + (lmr_off+id)"
+        default: "lmr_off"
+      base:
+        description: "Side B variant, same names (combinations allowed)"
+        default: "none"
+
+jobs:
+  play:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    env:
+      DEPTH: ${{ inputs.depth }}
+      BOARDS: ${{ inputs.boards }}
+      MINUTES: ${{ inputs.minutes }}
+      CAND: ${{ inputs.cand }}
+      BASE: ${{ inputs.base }}
+      MAX_TURNS: ${{ inputs.max_turns }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        working-directory: bench-depth
+        run: |
+          rustup update stable --no-self-update
+          bash prepare.sh
+          cargo build --release --manifest-path harness/Cargo.toml
+      - name: Play
+        working-directory: bench-depth
+        run: >
+          python3 run.py play --workers 3 --shard ${{ matrix.shard }} --depth "$DEPTH" --boards "$BOARDS"
+          --minutes "$MINUTES" --max-turns "$MAX_TURNS" --out results
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: results-${{ matrix.shard }}
+          path: bench-depth/results
+
+  summary:
+    needs: play
+    if: always()
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: bench-depth/all
+          merge-multiple: true
+      - name: Summarize
+        env:
+          MAX_TURNS: ${{ inputs.max_turns }}
+          CAND: ${{ inputs.cand }}
+          BASE: ${{ inputs.base }}
+        run: |
+          {
+            python3 bench-depth/run.py summarize bench-depth/all --cand "$CAND" --base "$BASE"
+            echo
+            echo "### Where the result comes from (by start corner, and by games that hit the turn cap)"
+            echo
+            python3 bench-depth/run.py analyze bench-depth/all --max-turns "$MAX_TURNS"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
