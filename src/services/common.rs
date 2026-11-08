@@ -5,7 +5,10 @@ use serde::Serialize;
 use serde_json::Value;
 use snake_ai::{AgentState, AiConfig, decide_move};
 use snake_api::{ApiFlavor, build_move_payload, normalize_move_name};
-use snake_domain::{Direction, FoodSettings, GameState, LcgRng, Point, SimConfig, Snake, place_initial_standard_food, simulate_turn};
+use snake_domain::{
+    Direction, FoodSettings, GameState, LcgRng, Point, SNAKE_START_SIZE, SimConfig, Snake, place_initial_standard_food, simulate_turn,
+    standard_start_points,
+};
 use snake_io::{AI_ID, PLAYER_ID};
 
 #[derive(Debug, Clone, Serialize)]
@@ -167,7 +170,8 @@ pub(crate) fn resolve_opponent(opponent: &str, self_play: bool, fallback_cfg: &A
 
 fn build_initial_state(width: i32, height: i32, seed: u32) -> (GameState, LcgRng) {
     let mut rng = LcgRng::new(seed);
-    let pad = 2;
+    let starts = standard_start_points(&mut rng, width, height, 2).expect("board too small for two snakes");
+    let snake = |id: &str, start: Point| Snake::new(id, id, vec![start; SNAKE_START_SIZE], 100);
     let mut state = GameState {
         turn: 0,
         seed: seed as u64,
@@ -175,33 +179,7 @@ fn build_initial_state(width: i32, height: i32, seed: u32) -> (GameState, LcgRng
             width,
             height,
             food: Vec::new(),
-            snakes: vec![
-                Snake::new(
-                    "local",
-                    "local",
-                    vec![Point { x: pad, y: pad }, Point { x: pad, y: pad - 1 }, Point { x: pad, y: pad - 2 }],
-                    100,
-                ),
-                Snake::new(
-                    "opponent",
-                    "opponent",
-                    vec![
-                        Point {
-                            x: width - pad - 1,
-                            y: height - pad - 1,
-                        },
-                        Point {
-                            x: width - pad - 1,
-                            y: height - pad,
-                        },
-                        Point {
-                            x: width - pad - 1,
-                            y: height - pad + 1,
-                        },
-                    ],
-                    100,
-                ),
-            ],
+            snakes: vec![snake("local", starts[0]), snake("opponent", starts[1])],
         },
     };
     let food_settings = FoodSettings::default();

@@ -15,7 +15,7 @@ SEED_STRIDE = 100_000      # worker k plays seeds 1000 + k*SEED_STRIDE ..., so n
 
 
 def play(a):
-    boards = [tuple(b.split("x")) for b in a.boards.split(",")]   # a trailing "p" (11x11p) flips the start parity
+    boards = [tuple(b.split("x")) for b in a.boards.split(",")]   # trailing f / p: older fixed starts (see harness)
     os.makedirs(a.out, exist_ok=True)
     procs = []
     for i in range(a.workers):

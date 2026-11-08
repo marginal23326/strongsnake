@@ -13,7 +13,7 @@ on:
         description: "Search depth of side A if it should differ from `depth` (equal-time tests; empty = same)"
         default: ""
       boards:
-        description: "Comma-separated boards; workers cycle through them (e.g. 11x11,11x11,16x9 weights 11x11 double). A trailing p (11x11p, 16x9p) moves the second start one cell, which flips the parity of the head distance"
+        description: "Comma-separated boards; workers cycle through them (e.g. 11x11,11x11,16x9 weights 11x11 double). Starts follow the new rules (even head distance, stacked bodies). A trailing f (11x11f) uses the older fixed starts (2,2) and (w-3,h-3); a trailing p (11x11p) uses them with the parity of the head distance flipped"
         default: "11x11,16x9"
       minutes:
         description: "How long each worker keeps playing new pairs (the job also needs a few minutes to build and upload)"
