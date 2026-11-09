@@ -96,7 +96,7 @@ def summarize(a):
           "When both sides are meant to play identically (a force_* variant against `none`), this has to be 0.")
 
 
-def analyze(a):
+def analyze_endings(a):
     """Where does the result come from? Per board: how the games ended, from A's side (who died and of what, or the turn
     cap), the length of both snakes at the end, and the split by which start corner A had."""
     rows = {}
@@ -116,7 +116,7 @@ def analyze(a):
                 r["cap"][capped][0] += res; r["cap"][capped][1] += 1
                 r["turns"] += turns; r["n"] += 1
                 if ends[slot]:
-                    codes, la, lb = ends[slot].split(":")
+                    codes, la, lb = ends[slot].split(":")[:3]
                     key = "A died: " + codes[0] if codes[0] != "-" and codes[1] == "-" else \
                           "B died: " + codes[1] if codes[1] != "-" and codes[0] == "-" else \
                           "both died" if codes != "--" else "neither (cap)"
@@ -141,6 +141,84 @@ def analyze(a):
         print(f"| {board} | " + " | ".join(cells) + " |")
 
 
+def decided(a):
+    """Proven wins and losses. A side's search reports a proven win or loss when it sees a forced result inside its depth.
+    A proven win is a proof against every reply, so the game has to be won afterwards (anything else points at a wrong
+    proof: a stale table entry, a reduced search, a depth horizon). After a proven loss the side can only hope the
+    opponent errs, so how often it still wins measures how well it plays lost positions."""
+    rows = {}
+    for fn in sorted(glob.glob(f"{a.dir}/**/w*.txt", recursive=True)):
+        for line in open(fn):
+            if not line.startswith("PAIR"):
+                continue
+            parts = line.split("|")
+            f = parts[0].split()
+            board = f"{f[2]}x{f[3]}"
+            r = rows.setdefault(board, {})
+            ends = parts[3].split() if len(parts) > 3 else []
+            for slot, (res_a, turns) in enumerate(((float(f[4]), int(f[6])), (float(f[5]), int(f[7])))):
+                e = ends[slot].split(":") if len(ends) > slot else []
+                if len(e) < 10:
+                    continue
+                first, ft = e[3], (int(e[4]), int(e[5]))
+                moves = (int(e[6]), int(e[7]), int(e[8]), int(e[9]))     # A wins, A losses, B wins, B losses
+                for side, res in ((0, res_a), (1, 1 - res_a)):
+                    c = r.setdefault(side, {"games": 0, "turns": 0, "win_moves": 0, "loss_moves": 0,
+                                            "W": [0, 0, 0, 0], "L": [0, 0, 0, 0], "-": [0, 0, 0, 0],
+                                            "cf": {"n": 0, "real_won": 0, "nf_won": 0, "nf_drew": 0, "kept": 0, "broke": 0,
+                                                   "gap_ok": [0, 0], "gap_bad": [0, 0]}})
+                    if first[side] == "W" and len(e) >= 13:
+                        cf = c["cf"]
+                        cf["n"] += 1
+                        cf["real_won"] += res == 1
+                        cf["nf_won"] += e[10][side] == "W"
+                        cf["nf_drew"] += e[10][side] == "D"
+                        # the interesting cases: lost in the real game but won without spawns, and the reverse
+                        cf["kept"] += res < 1 and e[10][side] == "W"
+                        cf["broke"] += res == 1 and e[10][side] != "W"
+                        g = cf["gap_ok" if res == 1 else "gap_bad"]
+                        g[0] += int(e[11 + side]); g[1] += 1
+                    c["games"] += 1; c["turns"] += turns
+                    c["win_moves"] += moves[2 * side]; c["loss_moves"] += moves[2 * side + 1]
+                    k = c[first[side]]
+                    k[0] += 1; k[1] += res == 1; k[2] += res == 0.5
+                    if first[side] != "-":
+                        k[3] += turns - ft[side]
+    pct = lambda n, d: f"{100 * n / d:.1f}%" if d else "-"
+    print("#### Proven results (what a side's own search reported, and how the game then went)\n")
+    print("| board | side | first proof was a win: games | ... then won | ... drew | first proof was a loss: games | ... then won | ... drew | never proved: games | ... won | moves reported as proven win | moves reported as proven loss | turns left after first win proof | turns left after first loss proof |")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for board in sorted(rows):
+        for side, name in ((0, "A"), (1, "B")):
+            c = rows[board].get(side)
+            if not c:
+                continue
+            w, l, n = c["W"], c["L"], c["-"]
+            left = lambda k: f"{k[3] / k[0]:.0f}" if k[0] else "-"
+            print(f"| {board} | {name} | {w[0]} | {pct(w[1], w[0])} | {pct(w[2], w[0])} | {l[0]} | {pct(l[1], l[0])} | {pct(l[2], l[0])} | "
+                  f"{n[0]} | {pct(n[1], n[0])} | {pct(c['win_moves'], c['turns'])} | {pct(c['loss_moves'], c['turns'])} | {left(w)} | {left(l)} |")
+
+
+    print("\n#### Proven wins: the real game against the same position replayed with no new food (the search cannot see spawns)\n")
+    print("| board | side | proven-win games | won in the real game | won in the no-spawn replay | drawn in the replay | not won for real but won in the replay | won for real but not in the replay | mean distance below the top score, proof held / proof failed |")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|")
+    for board in sorted(rows):
+        for side, name in ((0, "A"), (1, "B")):
+            c = rows[board].get(side)
+            if not c or not c["cf"]["n"]:
+                continue
+            k = c["cf"]
+            mean = lambda g: f"{g[0] / g[1]:.0f}" if g[1] else "-"
+            print(f"| {board} | {name} | {k['n']} | {pct(k['real_won'], k['n'])} | {pct(k['nf_won'], k['n'])} | {pct(k['nf_drew'], k['n'])} | "
+                  f"{pct(k['kept'], k['n'])} | {pct(k['broke'], k['n'])} | {mean(k['gap_ok'])} / {mean(k['gap_bad'])} |")
+
+
+def analyze(a):
+    analyze_endings(a)
+    print()
+    decided(a)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -148,7 +226,7 @@ def main():
     p.add_argument("--shard", type=int, default=0)
     p.add_argument("--workers", type=int, default=3)
     p.add_argument("--depth", type=int, default=8)
-    p.add_argument("--depth-cand", type=int, default=None, help="depth of side A when it should differ (equal-time tests)")
+    p.add_argument("--depth-cand", default=None, help="depth of side A when it should differ: 7, or 7~8 for a time-matched mix of 7 and 8")
     p.add_argument("--boards", default="11x11,16x9")
     p.add_argument("--minutes", type=int, default=240, help="stop starting new pairs after this long")
     p.add_argument("--max-pairs", type=int, default=50000)

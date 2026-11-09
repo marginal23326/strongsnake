@@ -10,7 +10,7 @@ on:
         description: "Search depth of both sides"
         default: "5"
       depth_cand:
-        description: "Search depth of side A if it should differ from `depth` (equal-time tests; empty = same)"
+        description: "Search depth of side A if it should differ from `depth` (empty = same). `7~8` = a time-matched mix: A searches 8 while its total thinking time so far is at or below B's, otherwise 7, so both sides spend equal time"
         default: ""
       boards:
         description: "Comma-separated boards; workers cycle through them (e.g. 11x11,11x11,16x9 weights 11x11 double). Starts follow the new rules (even head distance, stacked bodies). A trailing f (11x11f) uses the older fixed starts (2,2) and (w-3,h-3); a trailing p (11x11p) uses them with the parity of the head distance flipped"
