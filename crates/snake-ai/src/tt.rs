@@ -38,6 +38,10 @@ pub struct TtEntry {
     pub mv_dir: u8,
     /// The enemy's best reply to `mv_dir`.
     pub reply_dir: u8,
+    /// Iteration (root depth) that stored the entry.
+    pub iteration: u8,
+    /// Quiescence extensions already spent on the path to the position when the entry was stored.
+    pub q_used: u8,
 }
 
 impl Default for TtEntry {
@@ -52,6 +56,8 @@ impl Default for TtEntry {
             mv_y: 255,
             mv_dir: 255,
             reply_dir: 255,
+            iteration: 0,
+            q_used: 0,
         }
     }
 }
@@ -186,7 +192,19 @@ impl TranspositionTable {
 
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    pub fn set(&self, hash: u64, depth: usize, score: i32, flag: u8, mv_x: u8, mv_y: u8, mv_dir: u8, reply_dir: u8) {
+    pub fn set(
+        &self,
+        hash: u64,
+        depth: usize,
+        score: i32,
+        flag: u8,
+        mv_x: u8,
+        mv_y: u8,
+        mv_dir: u8,
+        reply_dir: u8,
+        iteration: u8,
+        q_used: u8,
+    ) {
         let idx = (hash as usize) & self.mask;
         let slot = unsafe { self.entries.get_unchecked(idx) };
 
@@ -215,6 +233,8 @@ impl TranspositionTable {
                     mv_y,
                     mv_dir,
                     reply_dir,
+                    iteration,
+                    q_used,
                 };
             }
         }

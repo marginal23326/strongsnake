@@ -32,8 +32,9 @@ cargo run --release -- trainer --pop 30 --gens 25
 
 At a high level:
 - multi-threaded simultaneous-move search (max-min over both snakes' moves) with alpha-beta pruning; each turn's move pair is resolved with the engine's rules
+- iterative deepening: searches depth 1, 2, ... up to `max_depth`, each pass seeding the next one's move ordering (stops early on a forced win)
 - transposition table + Zobrist hashing for reuse
-- principal variation search with some late-move reduction
+- principal variation search
 - evaluation based on territory control (Voronoi), flood fill safety, food urgency, and snake length
 
 The default config lives in `crates/snake-ai/src/config.rs` and can be tuned at runtime (CLI server config updates, or the trainer).

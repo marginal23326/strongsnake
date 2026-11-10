@@ -9,7 +9,7 @@ use crate::{
     floodfill::flood_fill,
     grid::Grid,
     model::AgentState,
-    search::{RootChildRecord, SearchContext, SearchFrame, prefer_hopeful_move, reconstruct_pv, search},
+    search::{RootChildRecord, RootSearch, SearchContext, prefer_hopeful_move, reconstruct_pv, search_root},
     tt::TranspositionTable,
     zobrist::Zobrist,
 };
@@ -22,6 +22,8 @@ pub struct Decision {
     pub root_children: Vec<RootChildRecord>,
     pub pv: Vec<Direction>,
     pub search_nodes: u64,
+    /// Depth, in turns, the decision was searched to.
+    pub depth: usize,
 }
 
 struct BrainMemory {
@@ -130,12 +132,12 @@ struct SearchTask<const W: usize, const N: usize> {
     zobrist: Arc<Zobrist>,
     initial_hash: u64,
     grid_size: usize,
-    depth: usize,
+    max_depth: usize,
 }
 
 struct WorkerResult {
     thread_id: usize,
-    result: crate::search::SearchResult,
+    root: RootSearch,
     stats: crate::PerfStats,
 }
 
@@ -174,7 +176,7 @@ impl WorkerPool {
         }
     }
 
-    fn run(&mut self, num_threads: usize, task: &WorkerTask) -> (crate::search::SearchResult, crate::PerfStats) {
+    fn run(&mut self, num_threads: usize, task: &WorkerTask) -> (RootSearch, crate::PerfStats) {
         self.ensure_workers(num_threads);
 
         let (result_tx, result_rx) = mpsc::channel();
@@ -197,7 +199,7 @@ impl WorkerPool {
             let worker_result = result_rx.recv().expect("search worker result");
             accumulate_perf_stats(&mut total_stats, &worker_result.stats);
             if worker_result.thread_id == 0 {
-                primary_res = Some(worker_result.result);
+                primary_res = Some(worker_result.root);
             }
         }
 
@@ -240,7 +242,7 @@ fn execute_search_task<const W: usize, const N: usize>(
 
     let tt_guard = get_tt().read().unwrap();
     let mut search_ctx = SearchContext {
-        root_depth: task.depth,
+        root_depth: 0,
         collect_root_children: task.build_debug && thread_id == 0,
         history_table: history,
         cfg: &task.cfg,
@@ -250,29 +252,31 @@ fn execute_search_task<const W: usize, const N: usize>(
         nodes_searched: 0,
     };
 
-    let mut result = search(
+    let mut root = search_root(
         &mut task.grid,
         &mut task.me,
         &mut task.enemy,
-        SearchFrame {
-            depth: task.depth,
-            alpha: -2_000_000_000,
-            beta: 2_000_000_000,
-            current_hash: task.initial_hash,
-            q_depth: 0,
-        },
+        task.initial_hash,
+        task.max_depth,
         &mut search_ctx,
     );
 
     if thread_id == 0
-        && let Some(mv) = prefer_hopeful_move(&mut task.grid, &mut task.me, &mut task.enemy, task.initial_hash, &result, &mut search_ctx)
+        && let Some(mv) = prefer_hopeful_move(
+            &mut task.grid,
+            &mut task.me,
+            &mut task.enemy,
+            task.initial_hash,
+            &root.result,
+            &mut search_ctx,
+        )
     {
-        result.mv = Some(mv);
+        root.result.mv = Some(mv);
     }
 
     crate::PERF_STATS.with(|s| s.borrow_mut().nodes += search_ctx.nodes_searched);
     let stats = crate::PERF_STATS.with(|s| s.take());
-    WorkerResult { thread_id, result, stats }
+    WorkerResult { thread_id, root, stats }
 }
 
 fn worker_loop(thread_id: usize, rx: mpsc::Receiver<WorkerCommand>) {
@@ -416,7 +420,6 @@ where
 
     prepare_tt_for_search(cfg);
     let num_threads = resolve_thread_count(cfg);
-    let depth = cfg.max_depth;
     let base_task = SearchTask {
         build_debug,
         grid: grid.clone(),
@@ -426,13 +429,13 @@ where
         zobrist: zobrist.clone(),
         initial_hash,
         grid_size,
-        depth,
+        max_depth: cfg.max_depth,
     };
 
-    let (primary_res, mut aggregated_stats) = if num_threads <= 1 {
+    let (primary_root, mut aggregated_stats) = if num_threads <= 1 {
         let mut history = [Vec::new(), Vec::new()];
         let worker_result = execute_search_task(0, base_task, &mut history);
-        (worker_result.result, worker_result.stats)
+        (worker_result.root, worker_result.stats)
     } else {
         let mut pool = get_worker_pool().lock().unwrap();
         let worker_task = base_task.clone().into_worker_task();
@@ -442,12 +445,13 @@ where
     accumulate_perf_stats(&mut aggregated_stats, &pre_worker_stats);
     crate::PERF_STATS.with(|s| *s.borrow_mut() = aggregated_stats);
 
-    let selected = primary_res.mv.map(|m| m.dir).unwrap_or_else(|| fallback_move(&grid, &me));
-    let score = primary_res.score;
-    let root_children = primary_res.children;
+    let RootSearch { result, depth } = primary_root;
+    let selected = result.mv.map(|m| m.dir).unwrap_or_else(|| fallback_move(&grid, &me));
+    let score = result.score;
+    let root_children = result.children;
     let pv = if build_debug {
         let tt_guard = get_tt().read().unwrap();
-        primary_res.mv.map_or_else(Vec::new, |root_move| {
+        result.mv.map_or_else(Vec::new, |root_move| {
             reconstruct_pv(
                 grid.clone(),
                 me.clone(),
@@ -503,5 +507,6 @@ where
         root_children,
         pv,
         search_nodes: aggregated_stats.nodes,
+        depth,
     }
 }

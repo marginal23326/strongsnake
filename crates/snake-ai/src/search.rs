@@ -7,7 +7,7 @@ use crate::{
     grid::Grid,
     heuristics::{evaluate, is_dense_tail_race},
     model::{AgentState, FastBody},
-    tt::{TT_FLAG_EXACT, TT_FLAG_LOWER, TT_FLAG_UPPER, TranspositionTable},
+    tt::{TT_FLAG_EXACT, TT_FLAG_LOWER, TT_FLAG_UPPER, TranspositionTable, TtEntry},
     zobrist::Zobrist,
 };
 
@@ -16,11 +16,6 @@ const SCORE_MIN: i32 = -2_000_000_000;
 const SCORE_MAX: i32 = 2_000_000_000;
 const PV_MAX_TURNS: usize = 32;
 
-/// Late-move reductions start at this remaining depth (in turns).
-const LMR_MIN_DEPTH: usize = 3;
-const LMR_REDUCTION: usize = 1;
-/// A reduced probe scoring above this looks like a forced win and is always re-searched in full.
-const LMR_MASSIVE_WIN: i32 = 50_000_000;
 
 const DIRECTIONS: [(i32, i32, Direction, usize); 4] = [
     (0, 1, Direction::Up, 0),
@@ -79,6 +74,7 @@ pub struct SearchFrame {
 }
 
 pub struct SearchContext<'a> {
+    /// Depth, in turns, of the iteration being searched. `search_root` advances it.
     pub root_depth: usize,
     pub collect_root_children: bool,
     pub history_table: &'a mut [Vec<i32>; 2],
@@ -87,6 +83,16 @@ pub struct SearchContext<'a> {
     pub zobrist: &'a Zobrist,
     pub thread_id: usize,
     pub nodes_searched: u64,
+}
+
+impl SearchContext<'_> {
+    /// An entry from an earlier iteration that spent more quiescence extensions on its way to the position than
+    /// this search has spent only saw the position with a smaller extension budget, so its score looks less far
+    /// ahead than a fresh search would. Its moves still seed the move ordering; only its score is refused.
+    #[inline]
+    fn score_is_reusable(&self, entry: &TtEntry, depth: usize, q_depth: usize) -> bool {
+        (entry.depth as usize) >= depth && !(entry.iteration < self.root_depth.min(255) as u8 && entry.q_used as usize > q_depth)
+    }
 }
 
 struct MoveList {
@@ -487,8 +493,6 @@ struct ReplySearch<'a> {
     replies: &'a [SearchMove],
     /// Remaining depth of the node I am moving from (decides how much a decided turn is worth).
     node_depth: usize,
-    /// Depth to search the resulting positions to (below `node_depth - 1` under late-move reduction).
-    child_depth: usize,
     alpha: i32,
     beta: i32,
     hash: u64,
@@ -521,7 +525,7 @@ fn worst_case_reply<const W: usize, const N: usize>(
                     me,
                     enemy,
                     SearchFrame {
-                        depth: query.child_depth,
+                        depth: query.node_depth - 1,
                         alpha: remove_bonus(query.alpha, bonus, cfg),
                         beta: remove_bonus(beta, bonus, cfg),
                         current_hash: hash,
@@ -619,6 +623,51 @@ pub fn prefer_hopeful_move<const W: usize, const N: usize>(
     Some(best.0)
 }
 
+/// The result of a root search, and the depth it was searched to.
+#[derive(Debug, Clone)]
+pub struct RootSearch {
+    pub result: SearchResult,
+    /// Depth, in turns, of the iteration that produced `result`.
+    pub depth: usize,
+}
+
+/// Iterative deepening: searches to depth 1, 2, ... `max_depth` (at least 1), returning the deepest result.
+///
+/// Every iteration leaves its best moves in the transposition table and its cutoffs in the history table, so
+/// the next one starts from the previous line instead of guessing. The search stops early once the root is a
+/// forced win: the first iteration to see it found the fastest one.
+pub fn search_root<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
+    me: &mut AgentState,
+    enemy: &mut AgentState,
+    root_hash: u64,
+    max_depth: usize,
+    ctx: &mut SearchContext<'_>,
+) -> RootSearch {
+    let mut depth = 1;
+    loop {
+        ctx.root_depth = depth;
+        let result = search(
+            grid,
+            me,
+            enemy,
+            SearchFrame {
+                depth,
+                alpha: SCORE_MIN,
+                beta: SCORE_MAX,
+                current_hash: root_hash,
+                q_depth: 0,
+            },
+            ctx,
+        );
+        let forced_win = result.score > 0 && is_decided(result.score, ctx.cfg);
+        if depth >= max_depth || forced_win {
+            return RootSearch { result, depth };
+        }
+        depth += 1;
+    }
+}
+
 pub fn search<const W: usize, const N: usize>(
     grid: &mut Grid<W, N>,
     me: &mut AgentState,
@@ -642,7 +691,7 @@ pub fn search<const W: usize, const N: usize>(
 
     if depth != ctx.root_depth
         && let Some(entry) = tt_entry
-        && (entry.depth as usize) >= depth
+        && ctx.score_is_reusable(&entry, depth, q_depth)
     {
         match entry.flag {
             TT_FLAG_EXACT => return SearchResult::leaf(entry.score),
@@ -680,7 +729,18 @@ pub fn search<const W: usize, const N: usize>(
         }
 
         let score = evaluate(grid, me, enemy, ctx.cfg);
-        ctx.tt.set(current_hash, 0, score, TT_FLAG_EXACT, 255, 255, 255, 255);
+        ctx.tt.set(
+            current_hash,
+            0,
+            score,
+            TT_FLAG_EXACT,
+            255,
+            255,
+            255,
+            255,
+            ctx.root_depth.min(255) as u8,
+            q_depth.min(255) as u8,
+        );
         return SearchResult::leaf(score);
     }
 
@@ -744,11 +804,10 @@ pub fn search<const W: usize, const N: usize>(
 
     for (i, &mv) in my_moves.iter().enumerate() {
         let ate_food = grid.food.get(grid.idx(mv.x, mv.y));
-        let probe = |child_depth: usize, alpha: i32, beta: i32| ReplySearch {
+        let probe = |alpha: i32, beta: i32| ReplySearch {
             my_mv: mv,
             replies,
             node_depth: depth,
-            child_depth,
             alpha,
             beta,
             hash: current_hash,
@@ -756,28 +815,13 @@ pub fn search<const W: usize, const N: usize>(
         };
 
         let (raw_score, reply) = if i == 0 {
-            worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, beta), ctx)
+            worst_case_reply(grid, me, enemy, &probe(alpha, beta), ctx)
         } else {
-            let mut reduced = None;
-            if depth >= LMR_MIN_DEPTH && !ate_food {
-                let probed = worst_case_reply(grid, me, enemy, &probe(depth - 1 - LMR_REDUCTION, alpha, alpha + 1), ctx);
-                let score = probed.0;
-                if score < alpha && score <= LMR_MASSIVE_WIN {
-                    reduced = Some(probed);
-                }
-            }
-
-            match reduced {
-                Some(result) => result,
-                None => {
-                    let probed = worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, alpha + 1), ctx);
-                    let score = probed.0;
-                    if score > alpha && score < beta {
-                        worst_case_reply(grid, me, enemy, &probe(depth - 1, alpha, beta), ctx)
-                    } else {
-                        probed
-                    }
-                }
+            let probed = worst_case_reply(grid, me, enemy, &probe(alpha, alpha + 1), ctx);
+            if probed.0 > alpha && probed.0 < beta {
+                worst_case_reply(grid, me, enemy, &probe(alpha, beta), ctx)
+            } else {
+                probed
             }
         };
 
@@ -823,6 +867,8 @@ pub fn search<const W: usize, const N: usize>(
         best_move.y as u8,
         best_move.dir_int as u8,
         direction_index(best_reply) as u8,
+        ctx.root_depth.min(255) as u8,
+        q_depth.min(255) as u8,
     );
 
     SearchResult {
