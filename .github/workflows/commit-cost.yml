@@ -1,0 +1,97 @@
+# How did the cost of one move grow over the history? Builds each of the last `commits` commits of `ref` and runs the
+# regression suite (always the newest scenario set) single-threaded at `depths`, then tables nodes, time, nps and
+# pass/fail per commit. Node counts are deterministic, so a jump between two neighbouring commits points at that commit.
+# It measures cost and scenario results only; whether the extra cost was worth it is the arena's job (bench-depth.yml).
+name: commit-cost
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit to walk back from"
+        default: "main"
+      commits:
+        description: "How many commits to walk back (first-parent). 22 reaches back to the 'treat depth as full turns' fix"
+        default: "22"
+      depths:
+        description: "Regression depths, e.g. 6,8,10 or 1-10"
+        default: "6,8,10"
+
+jobs:
+  list:
+    runs-on: ubuntu-26.04
+    outputs:
+      shas: ${{ steps.pick.outputs.shas }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - id: pick
+        run: |
+          # oldest first, so the table reads as a history
+          echo "shas=$(git rev-list --first-parent -n '${{ inputs.commits }}' HEAD | tac | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().split()))')" >> "$GITHUB_OUTPUT"
+
+  cost:
+    needs: list
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        sha: ${{ fromJSON(needs.list.outputs.shas) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ matrix.sha }}
+          path: rev
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: newest
+          sparse-checkout: |
+            data/scenarios
+            bench-depth
+      - name: Build
+        working-directory: rev
+        run: |
+          rustup update stable --no-self-update
+          # Commits before "drop generic_const_exprs" need nightly.
+          cargo build --release || { rustup toolchain install nightly --profile minimal && cargo +nightly build --release; }
+      - name: Run the suite on the newest scenarios
+        working-directory: rev
+        run: |
+          # Same positions for every commit, otherwise node totals are not comparable.
+          mkdir -p data
+          cp -rf ../newest/data/scenarios/. data/scenarios/
+          ./target/release/snake-app --threads 1 test --depths '${{ inputs.depths }}' --quiet-fail-only > ../suite.out 2> ../suite.err || true
+          tail -n 5 ../suite.out
+      - name: Row
+        run: |
+          mkdir -p rows
+          IDX=$(printf '%03d' "$(echo '${{ needs.list.outputs.shas }}' | python3 -c 'import sys,json; print(json.load(sys.stdin).index("${{ matrix.sha }}"))')")
+          cd rev
+          DATE=$(git log -1 --format=%ad --date=short)
+          SUBJECT=$(git log -1 --format=%s)
+          cd ..
+          python3 newest/bench-depth/commit_cost.py row suite.out "$(echo '${{ matrix.sha }}' | cut -c1-7)" "$DATE" "$SUBJECT" "rows/$IDX.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: row-${{ matrix.sha }}
+          path: rows/*.json
+
+  table:
+    needs: cost
+    if: ${{ always() }}
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          sparse-checkout: bench-depth
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: row-*
+          path: rows
+          merge-multiple: true
+      - run: python3 bench-depth/commit_cost.py table rows | tee -a "$GITHUB_STEP_SUMMARY"
