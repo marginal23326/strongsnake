@@ -1,4 +1,5 @@
-# How did the cost of one move grow over the history? Builds each of the last `commits` commits of `ref` and runs the
+# How did the cost of one move grow over the history? Builds the commits listed in `shas` (or, if that is empty, each of
+# the last `commits` commits of `ref`) and runs the
 # regression suite (always the newest scenario set) single-threaded at `depths`, then tables nodes, time, nps and
 # pass/fail per commit. Node counts are deterministic, so a jump between two neighbouring commits points at that commit.
 # It measures cost and scenario results only; whether the extra cost was worth it is the arena's job (bench-depth.yml).
@@ -10,8 +11,14 @@ on:
       ref:
         description: "Branch or commit to walk back from"
         default: "main"
+      scenarios_ref:
+        description: "Branch or commit whose scenario set every commit is run on"
+        default: "main"
+      shas:
+        description: "Commits to measure, oldest first, separated by spaces or commas (any abbreviation git understands). Default: the commits where the cost stepped up, with the one before the first of them. Empty = walk back `commits` commits from `ref` instead"
+        default: "869a1e4 9f527c4 e9095a0 2bf6527 d77fda4 cfb4890"
       commits:
-        description: "How many commits to walk back (first-parent). 22 reaches back to the 'treat depth as full turns' fix"
+        description: "Only used when `shas` is empty: how many commits to walk back from `ref` (first-parent)"
         default: "22"
       depths:
         description: "Regression depths, e.g. 6,8,10 or 1-10"
@@ -29,8 +36,16 @@ jobs:
           fetch-depth: 0
       - id: pick
         run: |
-          # oldest first, so the table reads as a history
-          echo "shas=$(git rev-list --first-parent -n '${{ inputs.commits }}' HEAD | tac | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().split()))')" >> "$GITHUB_OUTPUT"
+          if [ -n "${SHAS// /}" ]; then
+            # resolve to full hashes: actions/checkout cannot fetch an abbreviated one
+            LIST=$(for t in $(echo "$SHAS" | tr ',' ' '); do git rev-parse --verify "$t^{commit}"; done)
+          else
+            # oldest first, so the table reads as a history
+            LIST=$(git rev-list --first-parent -n '${{ inputs.commits }}' HEAD | tac)
+          fi
+          echo "shas=$(echo "$LIST" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().split()))')" >> "$GITHUB_OUTPUT"
+        env:
+          SHAS: ${{ inputs.shas }}
 
   cost:
     needs: list
@@ -47,11 +62,15 @@ jobs:
           path: rev
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.scenarios_ref }}
           path: newest
           sparse-checkout: |
             data/scenarios
             bench-depth
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rev
+          shared-key: commit-cost
       - name: Build
         working-directory: rev
         run: |
@@ -61,9 +80,12 @@ jobs:
       - name: Run the suite on the newest scenarios
         working-directory: rev
         run: |
-          # Same positions for every commit, otherwise node totals are not comparable.
+          # Same positions for every commit, otherwise node totals are not comparable: replace the commit's own
+          # scenario directory (older commits had many more files) instead of copying over it.
           mkdir -p data
-          cp -rf ../newest/data/scenarios/. data/scenarios/
+          rm -rf data/scenarios
+          mkdir -p data/scenarios
+          cp -r ../newest/data/scenarios/. data/scenarios/
           ./target/release/snake-app --threads 1 test --depths '${{ inputs.depths }}' --quiet-fail-only > ../suite.out 2> ../suite.err || true
           tail -n 5 ../suite.out
       - name: Row
