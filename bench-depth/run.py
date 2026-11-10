@@ -93,7 +93,7 @@ def summarize(a):
         print(per_board[board].row(board))
     odd = sum(1 for x in pooled.pair_scores if x != 0.5)
     print(f"\nPairs where the two sides did not split the pair 1-1: {odd} of {len(pooled.pair_scores)}. "
-          "When both sides are meant to play identically (a force_* variant against `none`), this has to be 0.")
+          "When both sides are meant to play identically (`none` against `none`), this has to be 0.")
 
 
 def analyze_endings(a):
