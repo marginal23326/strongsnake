@@ -26,6 +26,9 @@
 #                deeper one (so a pass cannot borrow extra depth from an earlier, deeper search of the same position)
 #   hashfix      the Zobrist hash also tells a snake's head from its tail, so reversed bodies on the same cells stop
 #                colliding (bench-depth/hashfix.patch)
+#   sym_len, sym_tail, sym_trap, sym_food, sym_all, no_food
+#                eval-symmetry variants (bench-depth/eval_variants.py explains each): the eval scores some terms from my
+#                side only, and each variant makes one of them symmetric. sym_all is the four sym_* together.
 #   patch        bench-depth/candidate.patch applied (a diff against the repo root; the file is not shipped)
 #
 # Variants combine with `+`: `lmr_off+id` is iterative deepening with late-move reductions off.
@@ -79,6 +82,7 @@ apply_variant() { # dir variant
     exact_depth) swap "$search" "(entry.depth as usize) >= depth" "(entry.depth as usize) == depth" ;;
     hashfix) patch -p1 -d "$d" --no-backup-if-mismatch < hashfix.patch ;;
     patch) patch -p1 -d "$d" --no-backup-if-mismatch < candidate.patch ;;
+    sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
 }

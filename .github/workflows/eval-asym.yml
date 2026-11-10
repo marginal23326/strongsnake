@@ -1,0 +1,57 @@
+# How asymmetric is the eval, and how often does a variant change the move? (bench-depth/harness/src/asym.rs)
+# Plays self-play games with the `base` build, and at sampled positions scores them with both builds' eval from each
+# snake's point of view (a symmetric eval gives eval(a,b) + eval(b,a) = 0), then asks both builds for a move at the same
+# depth. It says nothing about strength; bench-depth.yml does that. Run it first: a variant that changes the move in
+# 0.2% of positions cannot show up in an arena run, and one that changes 9% can.
+name: eval-asym
+
+on:
+  workflow_dispatch:
+    inputs:
+      cand:
+        description: "Variant under test (see bench-depth/prepare.sh), combinations with +"
+        default: "sym_all"
+      base:
+        description: "Reference variant"
+        default: "none"
+      depth:
+        description: "Search depth for the self-play games and for the move comparison"
+        default: "4"
+      games:
+        description: "Self-play games per board"
+        default: "150"
+      every:
+        description: "Sample a position every N turns"
+        default: "4"
+      max_turns:
+        description: "Turn cap of the self-play games"
+        default: "600"
+
+jobs:
+  asym:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        board: ["11x11", "16x9", "20x20"]
+    env:
+      CAND: ${{ inputs.cand }}
+      BASE: ${{ inputs.base }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        working-directory: bench-depth
+        run: |
+          rustup update stable --no-self-update
+          bash prepare.sh
+          cargo build --release --manifest-path harness/Cargo.toml
+      - name: Measure
+        working-directory: bench-depth
+        run: |
+          W="${{ matrix.board }}"; W="${W%x*}"; H="${{ matrix.board }}"; H="${H#*x}"
+          {
+            echo "### Eval symmetry: cand = $CAND, base = $BASE, board ${{ matrix.board }}"
+            echo
+            ./harness/target/release/harness asym 1 "${{ inputs.games }}" "$W" "$H" "${{ inputs.depth }}" "${{ inputs.every }}" "${{ inputs.max_turns }}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -5,6 +5,8 @@
 //! (a depth is a number, or `7~8` for a mix of two depths that keeps the side's total thinking time level with its opponent's)
 use std::time::Instant;
 
+mod asym;
+
 use snake_domain::{
     Board, Direction, FoodSettings, GameState, LcgRng, Point, SNAKE_START_SIZE, SimConfig, Snake, place_initial_standard_food, simulate_turn,
     standard_start_points,
@@ -271,6 +273,9 @@ fn run(
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
+    if a.get(1).map(String::as_str) == Some("asym") {
+        return asym::run(&a);
+    }
     if a.len() != 12 || a[1] != "match" {
         eprintln!("usage: harness match <seed0> <pairs> <w> <h>[p] <max_turns> <engineA> <depthA> <engineB> <depthB> <max_secs>");
         std::process::exit(2);
