@@ -6,9 +6,13 @@
 #   no_hopeful   the hopeful-move step (prefer_hopeful_move) never changes the move
 #   hashfix      the Zobrist hash also tells a snake's head from its tail, so reversed bodies on the same cells stop
 #                colliding (bench-depth/hashfix.patch)
-#   sym_len, sym_tail, sym_trap, sym_food, sym_all, no_food
-#                eval-symmetry variants (bench-depth/eval_variants.py explains each): the eval scores some terms from my
-#                side only, and each variant makes one of them symmetric. sym_all is the four sym_* together.
+#   sym_len, sym_trap, sym_food, sym_all, no_food, vor_len
+#                eval variants (bench-depth/eval_variants.py explains each): the eval scores some terms from my side
+#                only, and each sym_* makes one of them symmetric (sym_all is the three together); no_food drops the
+#                food term; vor_len gives contested Voronoi cells to the longer snake.
+#   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
+#   qext_<N>     at most N quiescence extensions per line instead of 8 (qext_0 is no_qext)
+#   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
 #   verify_proofs  a proven win or loss (a decided root score) is searched again with the exact hash of `hashfix`, and
 #                that search decides the move; every other move keeps the old hash (bench-depth/verify_proofs.patch)
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
@@ -45,7 +49,10 @@ apply_variant() { # dir variant
     rev_*) # the engine of an older commit (needs full git history); put it first in a combination
       rm -rf "${d:?}/crates/snake-domain" "${d:?}/crates/snake-ai"
       git -C .. archive "${2#rev_}" crates/snake-domain crates/snake-ai | tar -x -m -C "$d" ;; # -m: fresh mtimes, git archive stamps the commit time and cargo would reuse a stale build
-    sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    no_qext) swap "$search" "if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" "if false && ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" ;;
+    qext_*) swap "$search" "const QUIESCENCE_MAX_EXTENSIONS: usize = 8;" "const QUIESCENCE_MAX_EXTENSIONS: usize = ${2#qext_};" ;;
+    no_dense_shrink) swap "$d/crates/snake-ai/src/heuristics.rs" "const DENSE_VERDICT_DIVISOR: i32 = 1000;" "const DENSE_VERDICT_DIVISOR: i32 = 1;" ;;
+    sym_*|no_food|vor_len) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
 }

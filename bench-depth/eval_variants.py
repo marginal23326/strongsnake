@@ -8,48 +8,25 @@ below removes one of those asymmetries (or, for the control, the term itself), s
 
   sym_len        length term is (my length - enemy length) instead of my length only.
                  Today eating is worth `length + eat_reward` to me but only `eat_reward` to deny the enemy.
-  sym_tail       the enemy's leaving tail is cleared before Voronoi too (today only mine is).
+  sym_tail       (landed in the engine as 4c45be3; no longer a variant) the enemy's leaving tail is cleared before Voronoi too.
   sym_trap       both seal verdicts count and both have the same size (the mean of |trap_danger| and |enemy_trapped|).
                  Today "I am sealed" shadows "enemy is sealed", and the two have different sizes.
   sym_food       the enemy's food urgency is subtracted too, and a snake that cannot reach any food in time is a
                  hard verdict for either side (both unreachable = draw).
-  sym_all        sym_len + sym_tail + sym_trap + sym_food.
+  sym_all        sym_len + sym_trap + sym_food (the three that are still asymmetric).
   no_food        control: the food term and its hard verdict are removed. If sym_food and no_food both do no better
                  than `none`, the food term is not earning its place either way.
+  vor_len        Voronoi gives a contested cell (both heads reach it in the same number of turns) to the longer snake,
+                 which survives the head-on; today it is nobody's. Equal lengths both die, so those stay nobody's.
+                 The owner also keeps expanding through the cell. Still antisymmetric.
 
-With every sym_* applied, evaluate(me, enemy) == -evaluate(enemy, me) exactly; `harness asym` checks that.
+With every sym_* applied, evaluate(me, enemy) == -evaluate(enemy, me) exactly; `harness asym` checks that (it also
+holds for vor_len).
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
 import sys
 
 LEN_OLD = "    let mut score = me.body.len() as i32 * scores.length;\n"
 LEN_NEW = "    let mut score = (me.body.len() as i32 - enemy.body.len() as i32) * scores.length;\n"
-
-TAIL_OLD = """    if let Some((tail, _)) = leaving_tail {
-        grid.set(tail.x, tail.y, 0);
-    }
-    let voronoi = compute_voronoi(grid, my_head, enemy_head);
-    if let Some((tail, original)) = leaving_tail {
-        grid.set(tail.x, tail.y, original);
-    }
-"""
-TAIL_NEW = """    let en_leaving_tail = (enemy.health < 100).then(|| {
-        let tail = enemy.body.last();
-        (tail, grid.get(tail.x, tail.y))
-    });
-    if let Some((tail, _)) = leaving_tail {
-        grid.set(tail.x, tail.y, 0);
-    }
-    if let Some((tail, _)) = en_leaving_tail {
-        grid.set(tail.x, tail.y, 0);
-    }
-    let voronoi = compute_voronoi(grid, my_head, enemy_head);
-    if let Some((tail, original)) = en_leaving_tail {
-        grid.set(tail.x, tail.y, original);
-    }
-    if let Some((tail, original)) = leaving_tail {
-        grid.set(tail.x, tail.y, original);
-    }
-"""
 
 TRAP_OLD = """    let i_am_sealed = voronoi.my_count < me.body.len() as i32 && is_sealed_in(grid, me, enemy);
     if i_am_sealed {
@@ -128,10 +105,52 @@ FOOD_HARD = """        match (my_doomed, en_doomed) {
         }"""
 
 
+VOR_FILE = "voronoi.rs"
+VOR_PAIRS = [
+    ("pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point) -> VoronoiResult",
+     "pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point, my_len: usize, en_len: usize) -> VoronoiResult"),
+    ("let res = compute_voronoi_inner(grid, my_head, enemy_head);", "let res = compute_voronoi_inner(grid, my_head, enemy_head, my_len, en_len);"),
+    ("        compute_voronoi_inner(grid, my_head, enemy_head)\n", "        compute_voronoi_inner(grid, my_head, enemy_head, my_len, en_len)\n"),
+    ("fn compute_voronoi_inner<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point) -> VoronoiResult",
+     "fn compute_voronoi_inner<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point, my_len: usize, en_len: usize) -> VoronoiResult"),
+    ("""        my_front ^= ties;
+        en_front ^= ties;
+""", """        my_front ^= ties;
+        en_front ^= ties;
+        // A contested cell goes to the longer snake, which survives the head-on and keeps expanding from it.
+        // Equal lengths both die, so the cell stays nobody's.
+        if my_len > en_len {
+            my_front |= ties;
+        } else if en_len > my_len {
+            en_front |= ties;
+        }
+"""),
+]
+VOR_CALL = ("let voronoi = compute_voronoi(grid, my_head, enemy_head);",
+            "let voronoi = compute_voronoi(grid, my_head, enemy_head, me.body.len(), enemy.body.len());")
+
+
+def apply_vor_len(path):
+    import os
+    vpath = os.path.join(os.path.dirname(path), VOR_FILE)
+    text = open(vpath).read()
+    for old, new in VOR_PAIRS:
+        if old not in text:
+            sys.exit(f"variant vor_len needs this text in {vpath}, which is not there:\n{old}")
+        text = text.replace(old, new, 1)
+    open(vpath, "w").write(text)
+    h = open(path).read()
+    if VOR_CALL[0] not in h:
+        sys.exit(f"variant vor_len needs `{VOR_CALL[0]}` in {path}, which is not there")
+    open(path, "w").write(h.replace(VOR_CALL[0], VOR_CALL[1], 1))
+
+
 def apply(path, variant):
+    if variant == "vor_len":
+        return apply_vor_len(path)
     text = open(path).read()
     if variant == "sym_all":
-        text = apply_text(text, path, ["sym_len", "sym_tail", "sym_trap", "sym_food"])
+        text = apply_text(text, path, ["sym_len", "sym_trap", "sym_food"])
     else:
         text = apply_text(text, path, [variant])
     open(path, "w").write(text)
@@ -141,8 +160,6 @@ def apply_text(text, path, variants):
     for v in variants:
         if v == "sym_len":
             pairs = [(LEN_OLD, LEN_NEW)]
-        elif v == "sym_tail":
-            pairs = [(TAIL_OLD, TAIL_NEW)]
         elif v == "sym_trap":
             pairs = [(TRAP_OLD, TRAP_NEW)]
         elif v == "sym_food":
