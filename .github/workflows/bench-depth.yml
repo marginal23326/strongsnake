@@ -46,6 +46,8 @@ jobs:
       MAX_TURNS: ${{ inputs.max_turns }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # rev_<sha> variants read older commits
       - name: Build
         working-directory: bench-depth
         run: |

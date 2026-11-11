@@ -3,3 +3,4 @@ base/
 harness/target/
 results/
 all/
+.cargo/

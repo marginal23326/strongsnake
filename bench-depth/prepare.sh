@@ -11,6 +11,9 @@
 #                side only, and each variant makes one of them symmetric. sym_all is the four sym_* together.
 #   verify_proofs  a proven win or loss (a decided root score) is searched again with the exact hash of `hashfix`, and
 #                that search decides the move; every other move keeps the old hash (bench-depth/verify_proofs.patch)
+#   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
+#                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
+#                an older commit does not have. The harness is built without the asym diagnostic when one is used.
 #   patch        bench-depth/candidate.patch applied (a diff against the repo root; the file is not shipped)
 #
 # Variants combine with `+`: `hashfix+no_hopeful` is the exact hash with the hopeful-move step off.
@@ -39,6 +42,9 @@ apply_variant() { # dir variant
     hashfix) patch -p1 -d "$d" --no-backup-if-mismatch < hashfix.patch ;;
     verify_proofs) patch -p1 -d "$d" --no-backup-if-mismatch < verify_proofs.patch ;;
     patch) patch -p1 -d "$d" --no-backup-if-mismatch < candidate.patch ;;
+    rev_*) # the engine of an older commit (needs full git history); put it first in a combination
+      rm -rf "${d:?}/crates/snake-domain" "${d:?}/crates/snake-ai"
+      git -C .. archive "${2#rev_}" crates/snake-domain crates/snake-ai | tar -x -m -C "$d" ;; # -m: fresh mtimes, git archive stamps the commit time and cargo would reuse a stale build
     sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
@@ -66,4 +72,11 @@ done
 sed -i 's/^name = "snake-domain"/name = "snake-domain-cand"/' cand/crates/snake-domain/Cargo.toml
 sed -i 's/^name = "snake-ai"/name = "snake-ai-cand"/' cand/crates/snake-ai/Cargo.toml
 sed -i 's|^snake-domain = .*|snake-domain = { package = "snake-domain-cand", path = "../snake-domain" }|' cand/crates/snake-ai/Cargo.toml
+# The symmetry diagnostic calls the eval directly, whose signature differs in older engines.
+mkdir -p .cargo
+if [[ "$CAND+$BASE" == *rev_* ]]; then
+  printf '[build]\nrustflags = ["--cfg", "no_asym"]\n' > .cargo/config.toml
+else
+  rm -f .cargo/config.toml
+fi
 echo "ready: cand = $CAND, base = $BASE"
