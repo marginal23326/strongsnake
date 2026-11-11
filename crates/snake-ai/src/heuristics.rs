@@ -67,16 +67,18 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
 
     let mut score = me.body.len() as i32 * scores.length;
 
-    // My tail leaves its cell this turn, so it must not block my expansion.
-    let leaving_tail = (me.health < 100).then(|| {
-        let tail = me.body.last();
-        (tail, grid.get(tail.x, tail.y))
+    // Both tails leave their cells this turn (unless the snake just ate), so neither may block the other's expansion.
+    let leaving_tails = [me, enemy].map(|snake| {
+        (snake.health < 100).then(|| {
+            let tail = snake.body.last();
+            (tail, grid.get(tail.x, tail.y))
+        })
     });
-    if let Some((tail, _)) = leaving_tail {
+    for &(tail, _) in leaving_tails.iter().flatten() {
         grid.set(tail.x, tail.y, 0);
     }
     let voronoi = compute_voronoi(grid, my_head, enemy_head);
-    if let Some((tail, original)) = leaving_tail {
+    for &(tail, original) in leaving_tails.iter().flatten() {
         grid.set(tail.x, tail.y, original);
     }
 
