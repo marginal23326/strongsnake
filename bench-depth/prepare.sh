@@ -10,6 +10,8 @@
 #                eval variants (bench-depth/eval_variants.py explains each): the eval scores some terms from my side
 #                only, and each sym_* makes one of them symmetric (sym_all is the three together); no_food drops the
 #                food term; vor_len gives contested Voronoi cells to the longer snake.
+#   vor_time     (needs vor_len: vor_len+vor_time) bodies leave the Voronoi walls segment by segment instead of only the tails;
+#                vor_time_<N> models only the first N turns of that
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of 8 (qext_0 is no_qext)
 #   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
@@ -52,7 +54,7 @@ apply_variant() { # dir variant
     no_qext) swap "$search" "if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" "if false && ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" ;;
     qext_*) swap "$search" "const QUIESCENCE_MAX_EXTENSIONS: usize = 8;" "const QUIESCENCE_MAX_EXTENSIONS: usize = ${2#qext_};" ;;
     no_dense_shrink) swap "$d/crates/snake-ai/src/heuristics.rs" "const DENSE_VERDICT_DIVISOR: i32 = 1000;" "const DENSE_VERDICT_DIVISOR: i32 = 1;" ;;
-    sym_*|no_food|vor_len) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food|vor_len|vor_time|vor_time_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
 }
