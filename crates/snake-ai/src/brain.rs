@@ -416,7 +416,7 @@ where
     let grid_size = (cols * rows) as usize;
 
     let zobrist = get_or_init_zobrist(cols, rows).unwrap();
-    let initial_hash = zobrist.compute_hash(&grid, me.health, enemy.health);
+    let initial_hash = zobrist.compute_hash(&grid, &me, &enemy);
 
     prepare_tt_for_search(cfg);
     let num_threads = resolve_thread_count(cfg);

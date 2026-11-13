@@ -1,10 +1,15 @@
 use crate::grid::Grid;
+use crate::model::{AgentState, FastBody};
 
 #[derive(Debug, Clone)]
 pub struct Zobrist {
     pub width: i32,
     pub height: i32,
     table: Vec<[u64; 4]>,
+    /// Per cell and side: the key of a snake's head / tail standing there. The cell sets alone cannot tell
+    /// a snake from its reverse.
+    head: Vec<[u64; 2]>,
+    tail: Vec<[u64; 2]>,
     pub health: [[u64; 101]; 2], // 0 = me, 1 = enemy.
 }
 
@@ -19,6 +24,9 @@ impl Zobrist {
             slot[3] = splitmix64(&mut seed);
         }
 
+        let head: Vec<[u64; 2]> = (0..size).map(|_| [splitmix64(&mut seed), splitmix64(&mut seed)]).collect();
+        let tail: Vec<[u64; 2]> = (0..size).map(|_| [splitmix64(&mut seed), splitmix64(&mut seed)]).collect();
+
         let mut health = [[0u64; 101]; 2];
         let (row0, row1) = health.split_at_mut(1);
         for (h0, h1) in row0[0].iter_mut().zip(row1[0].iter_mut()) {
@@ -30,11 +38,23 @@ impl Zobrist {
             width,
             height,
             table,
+            head,
+            tail,
             health,
         }
     }
 
-    pub fn compute_hash<const W: usize, const N: usize>(&self, grid: &Grid<W, N>, my_health: i32, enemy_health: i32) -> u64 {
+    /// Key of where `body`'s head and tail are.
+    #[inline(always)]
+    pub fn ends(&self, side: usize, body: &FastBody) -> u64 {
+        if body.is_empty() {
+            return 0;
+        }
+        let (head, tail) = (body.head(), body.last());
+        self.head[(head.y * self.width + head.x) as usize][side] ^ self.tail[(tail.y * self.width + tail.x) as usize][side]
+    }
+
+    pub fn compute_hash<const W: usize, const N: usize>(&self, grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState) -> u64 {
         let mut h = 0u64;
         let mut xor_bits = |bb: crate::bitboard::BitBoard<W, N>, piece: usize| {
             for i in 0..W {
@@ -51,8 +71,8 @@ impl Zobrist {
         xor_bits(grid.my_body, 2);
         xor_bits(grid.enemy_body, 3);
 
-        h ^= self.health[0][clamp_health(my_health)];
-        h ^= self.health[1][clamp_health(enemy_health)];
+        h ^= self.health[0][clamp_health(me.health)] ^ self.ends(0, &me.body);
+        h ^= self.health[1][clamp_health(enemy.health)] ^ self.ends(1, &enemy.body);
         h
     }
 

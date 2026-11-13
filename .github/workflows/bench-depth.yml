@@ -22,8 +22,8 @@ on:
         description: "Turn cap. A game that reaches it with both snakes alive is decided by length, which is an arbitrary rule; raise it to see how long games really end"
         default: "1500"
       cand:
-        description: "Side A variant (see bench-depth/prepare.sh): none, no_hopeful, hashfix, verify_proofs (plus the sym_* and no_food variants, see prepare.sh); combine with + (hashfix+no_hopeful)"
-        default: "verify_proofs"
+        description: "Side A variant (see bench-depth/prepare.sh): none, no_hopeful, qext_<N>, no_food, sym_* and others, see prepare.sh; combine with + (qext_5+no_hopeful)"
+        default: "none"
       base:
         description: "Side B variant, same names (combinations allowed)"
         default: "none"

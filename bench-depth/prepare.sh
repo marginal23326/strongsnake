@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Builds ./cand and ./base: two copies of the engine crates, each with one named variant applied. The harness plays
-# one against the other. CAND and BASE name the variants (default: cand = verify_proofs, base = none).
+# one against the other. CAND and BASE name the variants (default: cand = none, base = none).
 #
-#   none         the engine as it is
+#   none         the engine as it is (it already has sym_tail, vor_len, vor_time and the head/tail Zobrist keys)
 #   no_hopeful   the hopeful-move step (prefer_hopeful_move) never changes the move
-#   hashfix      the Zobrist hash also tells a snake's head from its tail, so reversed bodies on the same cells stop
-#                colliding (bench-depth/hashfix.patch)
 #   sym_len, sym_trap, sym_food, sym_all, no_food
 #                eval variants (bench-depth/eval_variants.py explains each): the eval scores some terms from my side
 #                only, and each sym_* makes one of them symmetric (sym_all is the three together); no_food drops the
@@ -15,17 +13,15 @@
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
 #   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
-#   verify_proofs  a proven win or loss (a decided root score) is searched again with the exact hash of `hashfix`, and
-#                that search decides the move; every other move keeps the old hash (bench-depth/verify_proofs.patch)
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
 #   patch        bench-depth/candidate.patch applied (a diff against the repo root; the file is not shipped)
 #
-# Variants combine with `+`: `hashfix+no_hopeful` is the exact hash with the hopeful-move step off.
+# Variants combine with `+`: `qext_5+no_hopeful` is the extension cap 5 with the hopeful-move step off.
 set -euo pipefail
 cd "$(dirname "$0")"
-CAND="${CAND:-verify_proofs}"
+CAND="${CAND:-none}"
 BASE="${BASE:-none}"
 
 # Rewrites `file` and fails loudly if the text it was meant to change is not there (the engine source moved on).
@@ -58,8 +54,6 @@ apply_variant() { # dir variant
   case "$2" in
     none) ;;
     no_hopeful) swap "$search" "if depth == 0 || !is_proven_loss(root.score, cfg) {" "if true {" ;;
-    hashfix) patch -p1 -d "$d" --no-backup-if-mismatch < hashfix.patch ;;
-    verify_proofs) patch -p1 -d "$d" --no-backup-if-mismatch < verify_proofs.patch ;;
     patch) patch -p1 -d "$d" --no-backup-if-mismatch < candidate.patch ;;
     rev_*) # the engine of an older commit (needs full git history); put it first in a combination
       rm -rf "${d:?}/crates/snake-domain" "${d:?}/crates/snake-ai"

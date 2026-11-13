@@ -11,7 +11,7 @@ use crate::{
     zobrist::Zobrist,
 };
 
-const QUIESCENCE_MAX_EXTENSIONS: usize = 6;
+const QUIESCENCE_MAX_EXTENSIONS: usize = 5;
 const SCORE_MIN: i32 = -2_000_000_000;
 const SCORE_MAX: i32 = 2_000_000_000;
 const PV_MAX_TURNS: usize = 32;
@@ -243,8 +243,10 @@ fn make_move<const W: usize, const N: usize>(
     let new_health = (old_health - 1) * (1 - ate_food_i32) + (100 * ate_food_i32);
     let cell_id: i8 = 2 + side as i8;
 
-    let mut next_hash =
-        current_hash ^ zobrist.health[side][old_health.clamp(0, 100) as usize] ^ zobrist.health[side][new_health.clamp(0, 100) as usize];
+    let mut next_hash = current_hash
+        ^ zobrist.health[side][old_health.clamp(0, 100) as usize]
+        ^ zobrist.health[side][new_health.clamp(0, 100) as usize]
+        ^ zobrist.ends(side, &me.body);
 
     me.health = new_health;
     me.body.push_front(Point { x: mv.x, y: mv.y });
@@ -279,6 +281,7 @@ fn make_move<const W: usize, const N: usize>(
     unsafe {
         grid.replace_unchecked(mv.x, mv.y, original_head_val, cell_id);
     }
+    next_hash ^= zobrist.ends(side, &me.body);
 
     (
         next_hash,
