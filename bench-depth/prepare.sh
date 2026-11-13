@@ -10,6 +10,7 @@
 #                eval variants (bench-depth/eval_variants.py explains each): the eval scores some terms from my side
 #                only, and each sym_* makes one of them symmetric (sym_all is the three together); no_food drops the
 #                food term. (sym_tail, vor_len and vor_time are in the engine now.)
+#   food_vor     the food term uses the real turns my Voronoi front needs to reach food (Manhattan when none is mine)
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine frees all of them)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
@@ -67,7 +68,7 @@ apply_variant() { # dir variant
     qext_*) swap_const "$search" QUIESCENCE_MAX_EXTENSIONS "${2#qext_}" ;;
     vor_time_*) swap_const "$d/crates/snake-ai/src/voronoi.rs" RELEASE_TURNS "${2#vor_time_}" ;;
     no_dense_shrink) swap "$d/crates/snake-ai/src/heuristics.rs" "const DENSE_VERDICT_DIVISOR: i32 = 1000;" "const DENSE_VERDICT_DIVISOR: i32 = 1;" ;;
-    sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food|food_vor) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
 }
