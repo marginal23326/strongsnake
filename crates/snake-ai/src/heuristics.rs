@@ -77,7 +77,7 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
     for &(tail, _) in leaving_tails.iter().flatten() {
         grid.set(tail.x, tail.y, 0);
     }
-    let voronoi = compute_voronoi(grid, my_head, enemy_head);
+    let voronoi = compute_voronoi(grid, my_head, enemy_head, me.body.len(), enemy.body.len(), me, enemy);
     for &(tail, original) in leaving_tails.iter().flatten() {
         grid.set(tail.x, tail.y, original);
     }

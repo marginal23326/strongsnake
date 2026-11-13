@@ -11,7 +11,7 @@ use crate::{
     zobrist::Zobrist,
 };
 
-const QUIESCENCE_MAX_EXTENSIONS: usize = 8;
+const QUIESCENCE_MAX_EXTENSIONS: usize = 6;
 const SCORE_MIN: i32 = -2_000_000_000;
 const SCORE_MAX: i32 = 2_000_000_000;
 const PV_MAX_TURNS: usize = 32;
