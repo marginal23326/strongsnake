@@ -21,13 +21,23 @@ def play(a):
     for i in range(a.workers):
         k = a.shard * a.workers + i
         w, h = boards[k % len(boards)]
-        out = open(f"{a.out}/w{k:03d}.txt", "w")
+        path = f"{a.out}/w{k:03d}.txt"
+        out = open(path, "w")
         cmd = [BIN, "match", str(1000 + k * SEED_STRIDE), str(a.max_pairs), w, h, str(a.max_turns),
                "cand", str(a.depth_cand or a.depth), "base", str(a.depth), str(a.minutes * 60)]
-        procs.append((subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT), out))
-    for p, out in procs:
+        procs.append((subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT), out, path))
+    bad = 0
+    for p, out, path in procs:
         p.wait()
         out.close()
+        lines = open(path, errors="replace").read().splitlines()
+        pairs = sum(1 for l in lines if l.startswith("PAIR"))
+        if p.returncode != 0 or pairs == 0:
+            # A crashed worker used to leave a green job and an empty result; say what happened instead.
+            bad += 1
+            print(f"{path}: harness exited with {p.returncode} after {pairs} pairs; last lines:\n" + "\n".join(lines[-20:]), file=sys.stderr)
+    if bad:
+        sys.exit(f"{bad} of {len(procs)} workers produced no result (see above)")
 
 
 def elo(p):
