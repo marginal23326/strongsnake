@@ -14,3 +14,6 @@ snake_domain_cand = { package = "snake-domain-cand", path = "../cand/crates/snak
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(no_asym)'] }
