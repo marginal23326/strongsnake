@@ -1,6 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 
-use reqwest::Client;
+use http_body_util::{BodyExt, Full};
+use hyper::{Request, body::Bytes, header};
+use hyper_util::{
+    client::legacy::{Client as HyperClient, connect::HttpConnector},
+    rt::TokioExecutor,
+};
 use serde::Serialize;
 use serde_json::Value;
 use snake_ai::{AgentState, AiConfig, decide_move};
@@ -146,6 +151,9 @@ pub(crate) fn resolve_opponent(opponent: &str, self_play: bool, fallback_cfg: &A
     if self_play {
         return OpponentMode::Local(fallback_cfg.clone());
     }
+    if opponent.starts_with("https://") {
+        eprintln!("warning: https:// opponents are not supported (the HTTP client has no TLS); requests to {opponent} will fail");
+    }
     if opponent.starts_with("http://") || opponent.starts_with("https://") {
         return OpponentMode::Http {
             url: opponent.to_owned(),
@@ -198,6 +206,7 @@ fn build_initial_state(width: i32, height: i32, seed: u32) -> (GameState, LcgRng
     (state, rng)
 }
 
+#[cfg_attr(not(feature = "gui"), allow(dead_code))]
 pub fn build_playground_state(width: i32, height: i32, seed: u32) -> (GameState, LcgRng) {
     let (mut state, rng) = build_initial_state(width, height, seed);
     for (snake, (id, name)) in state.board.snakes.iter_mut().zip([(PLAYER_ID, "Player"), (AI_ID, "AI")]) {
@@ -252,7 +261,7 @@ fn extract_agent_pair(state: &GameState, me_idx: Option<usize>, enemy_idx: Optio
 }
 
 async fn request_http_move(
-    client: &Client,
+    client: &HttpClient,
     url: &str,
     state: &GameState,
     snake_id: &str,
@@ -264,10 +273,7 @@ async fn request_http_move(
         Err(_) => return Direction::Up,
     };
     let endpoint = format!("{}/move", url.trim_end_matches('/'));
-    let Ok(resp) = client.post(endpoint).json(&payload).send().await else {
-        return Direction::Up;
-    };
-    let Ok(json) = resp.json::<Value>().await else {
+    let Some(json) = client.post_json(&endpoint, &payload).await else {
         return Direction::Up;
     };
     json.get("move")
@@ -276,11 +282,32 @@ async fn request_http_move(
         .unwrap_or(Direction::Up)
 }
 
-pub(crate) fn build_http_client(timeout_ms: u64) -> Client {
-    Client::builder()
-        .timeout(std::time::Duration::from_millis(timeout_ms))
-        .build()
-        .expect("client build")
+/// A minimal HTTP/1.1 client for the opponent servers (plain `http://`, keep-alive).
+#[derive(Clone)]
+pub(crate) struct HttpClient {
+    inner: HyperClient<HttpConnector, Full<Bytes>>,
+    timeout: std::time::Duration,
+}
+
+impl HttpClient {
+    /// POSTs `payload` as JSON and returns the JSON reply; `None` on any failure or when the whole exchange exceeds the timeout.
+    async fn post_json(&self, url: &str, payload: &impl Serialize) -> Option<Value> {
+        let body = serde_json::to_vec(payload).ok()?;
+        let request = Request::post(url).header(header::CONTENT_TYPE, "application/json").body(Full::new(Bytes::from(body))).ok()?;
+        let exchange = async {
+            let response = self.inner.request(request).await.ok()?;
+            let bytes = response.into_body().collect().await.ok()?.to_bytes();
+            serde_json::from_slice::<Value>(&bytes).ok()
+        };
+        tokio::time::timeout(self.timeout, exchange).await.ok().flatten()
+    }
+}
+
+pub(crate) fn build_http_client(timeout_ms: u64) -> HttpClient {
+    HttpClient {
+        inner: HyperClient::builder(TokioExecutor::new()).build_http(),
+        timeout: std::time::Duration::from_millis(timeout_ms),
+    }
 }
 
 pub(crate) async fn run_single_match_with_client(
@@ -288,7 +315,7 @@ pub(crate) async fn run_single_match_with_client(
     cfg: &AiConfig,
     opponent: &OpponentMode,
     match_cfg: &MatchRunConfig,
-    client: &Client,
+    client: &HttpClient,
 ) -> MatchResult {
     run_single_match_with_options_and_client(seed, cfg, opponent, match_cfg, MatchRuntimeOptions::default(), client)
         .await
@@ -301,7 +328,7 @@ pub(crate) async fn run_single_match_with_options_and_client(
     opponent: &OpponentMode,
     match_cfg: &MatchRunConfig,
     options: MatchRuntimeOptions,
-    client: &Client,
+    client: &HttpClient,
 ) -> MatchRunOutput {
     let mut scripted_opponent_moves = options.scripted_opponent_moves;
     let (mut state, mut rng) = if let Some(initial_state) = options.initial_state {

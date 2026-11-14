@@ -30,11 +30,11 @@ impl SnakeGuiApp {
                     // --- 1. File Menu for Scenario Loading & Saving ---
                     ui.menu_button("File", |ui| {
                         if ui.button("Load Scenario...").clicked() {
-                            ui.data_mut(|d| d.insert_temp(egui::Id::new("show_load_dialog"), true));
+                            ui.data_mut(|d| d.insert_temp(egui::Id::unique("show_load_dialog"), true));
                             ui.close();
                         }
                         if ui.button("Save Scenario...").clicked() {
-                            ui.data_mut(|d| d.insert_temp(egui::Id::new("show_save_dialog"), true));
+                            ui.data_mut(|d| d.insert_temp(egui::Id::unique("show_save_dialog"), true));
                             self.save_error = None;
                             self.save_success = None;
                             ui.close();
@@ -68,9 +68,9 @@ impl SnakeGuiApp {
 
                     // --- 3. Right-Aligned Stats & Toggles ---
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let mut show_logs = ui.data(|d| d.get_temp(egui::Id::new("show_logs")).unwrap_or(false));
+                        let mut show_logs = ui.data(|d| d.get_temp(egui::Id::unique("show_logs")).unwrap_or(false));
                         if ui.toggle_value(&mut show_logs, "Logs").clicked() {
-                            ui.data_mut(|d| d.insert_temp(egui::Id::new("show_logs"), show_logs));
+                            ui.data_mut(|d| d.insert_temp(egui::Id::unique("show_logs"), show_logs));
                         }
 
                         ui.separator();
@@ -111,7 +111,7 @@ impl SnakeGuiApp {
     }
 
     pub(super) fn draw_logs_panel(&mut self, ui: &mut egui::Ui) {
-        let show_logs = ui.data(|d| d.get_temp(egui::Id::new("show_logs")).unwrap_or(false));
+        let show_logs = ui.data(|d| d.get_temp(egui::Id::unique("show_logs")).unwrap_or(false));
         if !show_logs {
             return;
         }

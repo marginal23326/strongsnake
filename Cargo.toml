@@ -19,21 +19,23 @@ license = "MIT"
 version = "0.1.0"
 
 [dependencies]
-anyhow = "1.0.103"
+anyhow = "1.0"
+http-body-util = "0.1.5"
+hyper = { version = "1.12", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "0.1.21", default-features = false, features = ["client-legacy", "http1", "tokio"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "tracing"] }
-clap = { version = "4.6.1", features = ["derive"] }
-eframe = { version = "0.35.0", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
-rand = "0.10.2"
-reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+clap = { version = "4.6.7", features = ["derive"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "x11"], optional = true }
+rand = "0.10"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
+serde_json = "1.0"
 snake-ai = { version = "0.1.0", path = "crates/snake-ai" }
 snake-api = { version = "0.1.0", path = "crates/snake-api" }
 snake-domain = { version = "0.1.0", path = "crates/snake-domain" }
 snake-io = { version = "0.1.0", path = "crates/snake-io" }
-tokio = { version = "1.52.3", features = ["rt-multi-thread", "net", "sync", "time"] }
+tokio = { version = "1.54", features = ["rt-multi-thread", "net", "sync", "time"] }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "fmt"] }
 
 [profile.release]
 lto = "thin"
@@ -56,4 +58,6 @@ incremental = false
 debug = 0
 
 [features]
+default = []
+gui = ["dep:eframe"]
 profiling = ["snake-ai/profiling"]

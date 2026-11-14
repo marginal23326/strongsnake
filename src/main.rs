@@ -1,3 +1,4 @@
+#[cfg(feature = "gui")]
 mod gui;
 mod server;
 mod services;
@@ -13,10 +14,10 @@ use anyhow::{Result, bail};
 use clap::{ArgAction, Args, Parser, Subcommand};
 use snake_ai::{AiConfig, RuntimeConfig};
 use snake_api::normalize_api_type;
-use tracing_subscriber::EnvFilter;
 
+#[cfg(feature = "gui")]
+use crate::gui::run_gui;
 use crate::{
-    gui::run_gui,
     server::run_server,
     services::{
         ArenaOptions, RegressionOptions, RegressionOutput, TrainerOptions, default_scenario_dir, format_arena_progress_line,
@@ -306,8 +307,9 @@ fn apply_runtime_config(cfg: &mut AiConfig, runtime: &RuntimeCliArgs) {
 }
 
 fn main() -> Result<()> {
+    let log_level = std::env::var("RUST_LOG").ok().and_then(|v| v.trim().parse::<tracing::Level>().ok()).unwrap_or(tracing::Level::INFO);
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse().unwrap()))
+        .with_max_level(log_level)
         .with_target(false)
         .compact()
         .init();
@@ -331,8 +333,13 @@ fn main() -> Result<()> {
 
     match command {
         None => {
-            apply_depth_override(&mut base_cfg, cli.depth, None);
-            run_gui(base_cfg)?
+            #[cfg(feature = "gui")]
+            {
+                apply_depth_override(&mut base_cfg, cli.depth, None);
+                run_gui(base_cfg)?
+            }
+            #[cfg(not(feature = "gui"))]
+            bail!("this build has no GUI; rebuild with `--features gui` to open the window, or pass a command (see --help)")
         }
         Some(Command::Server { host, port, depth }) => {
             apply_depth_override(&mut base_cfg, cli.depth, depth);

@@ -19,6 +19,7 @@ cargo run --release
 cargo run --release -- server --host 0.0.0.0 --port 9000
 
 # Regression suite against scenarios in data/scenarios
+# (the GUI is an optional feature, off by default: add --features gui to open the window)
 cargo run --release -- test --depths 6
 
 # Arena batch run

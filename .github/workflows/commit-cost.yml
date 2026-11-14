@@ -76,6 +76,7 @@ jobs:
         run: |
           rustup update stable --no-self-update
           # Commits before "drop generic_const_exprs" need nightly.
+          # Older commits had the GUI built in; newer ones build it only with --features gui, which is not needed here.
           cargo build --release || { rustup toolchain install nightly --profile minimal && cargo +nightly build --release; }
       - name: Run the suite on the newest scenarios
         working-directory: rev

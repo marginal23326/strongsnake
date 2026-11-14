@@ -4,7 +4,7 @@ use snake_domain::Direction;
 use super::super::state::SnakeGuiApp;
 
 fn show_modal_dialog(ctx: &egui::Context, open_id: &str, title: &str, add_contents: impl FnOnce(&mut egui::Ui, &mut bool)) {
-    let id = egui::Id::new(open_id);
+    let id = egui::Id::unique(open_id);
     let mut is_open = ctx.data(|d| d.get_temp(id).unwrap_or(false));
     if !is_open {
         return;

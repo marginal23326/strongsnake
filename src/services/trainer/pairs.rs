@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use snake_ai::AiConfig;
 
-use crate::services::common::{MatchRunConfig, MatchRuntimeOptions, OpponentMode, build_http_client, run_single_match_with_options_and_client};
+use crate::services::common::{HttpClient, MatchRunConfig, MatchRuntimeOptions, OpponentMode, build_http_client, run_single_match_with_options_and_client};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub(super) struct PairSpec {
@@ -57,7 +57,7 @@ async fn play_all(job: &PairJob) -> Vec<PairResult> {
     results
 }
 
-async fn play_pair(job: &PairJob, spec: &PairSpec, client: &reqwest::Client) -> PairResult {
+async fn play_pair(job: &PairJob, spec: &PairSpec, client: &HttpClient) -> PairResult {
     let match_cfg = MatchRunConfig {
         width: spec.width,
         height: spec.height,
