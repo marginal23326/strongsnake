@@ -11,6 +11,8 @@
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine frees all of them)
 #   vor_eat      the Voronoi expansion lets a snake that reaches food grow: from the first turn its front can take food, its
 #                tail frees one turn later (first food only; the real eating turn is not path-exact, ties are ignored)
+#   vor_eat_<N>  like vor_eat, but a snake can eat up to N times in the expansion: each turn its front newly touches food (one
+#                food cell, the lowest index, is used up per eat) its tail waits another turn. vor_eat is N = 1.
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
 #   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
@@ -64,6 +66,38 @@ apply_variant() { # dir variant
     no_qext) swap "$search" "if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" "if false && ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" ;;
     qext_*) swap_const "$search" QUIESCENCE_MAX_EXTENSIONS "${2#qext_}" ;;
     vor_time_*) swap_const "$d/crates/snake-ai/src/voronoi.rs" RELEASE_TURNS "${2#vor_time_}" ;;
+    vor_eat_*)
+      local n=${2#vor_eat_}
+      local vor=$d/crates/snake-ai/src/voronoi.rs
+      swap "$vor" "    let mut turn = 0usize;
+    loop {
+        turn += 1;
+" "    let (mut my_eats, mut en_eats) = (0usize, 0usize);
+    let (mut my_food, mut en_food) = (grid.food, grid.food);
+    let mut turn = 0usize;
+    loop {
+        turn += 1;
+"
+      swap "$vor" "        if turn <= RELEASE_TURNS {
+            let mut freed" "        // A front that reaches food this turn eats it and grows: the tail then stays one turn longer.
+        if my_eats < $n && my_any {
+            let mut hit = my_raw & unvisited & my_food;
+            if let Some(i) = hit.pop_first() {
+                my_food.unset(i);
+                my_eats += 1;
+                my_release.wait += 1;
+            }
+        }
+        if en_eats < $n && en_any {
+            let mut hit = en_raw & unvisited & en_food;
+            if let Some(i) = hit.pop_first() {
+                en_food.unset(i);
+                en_eats += 1;
+                en_release.wait += 1;
+            }
+        }
+        if turn <= RELEASE_TURNS {
+            let mut freed" ;;
     vor_eat)
       local vor=$d/crates/snake-ai/src/voronoi.rs
       swap "$vor" "    let mut turn = 0usize;
