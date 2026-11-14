@@ -25,8 +25,14 @@ impl<const W: usize, const N: usize> BitBoard<W, N> {
 
     #[inline(always)]
     pub fn with_bit(idx: usize) -> Self {
+        // Built word by word in registers: indexing an array by a runtime word number goes through stack memory,
+        // and loading that back as one wide vector stalls on the narrower store.
+        let bit = 1u64 << (idx & 63);
+        let word = idx >> 6;
         let mut b = Self::empty();
-        b.set(idx);
+        for i in 0..W {
+            b.words[i] = if word == i { bit } else { 0 };
+        }
         b
     }
 
@@ -233,6 +239,16 @@ impl<const W: usize, const N: usize> SearchContext<W, N>
 
     #[inline(always)]
     pub fn up(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
+        self.up_unmasked(b) & self.valid_cells
+    }
+
+    #[inline(always)]
+    pub fn down(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
+        self.down_unmasked(b) & self.valid_cells
+    }
+
+    #[inline(always)]
+    fn up_unmasked(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         let mut ret = BitBoard::empty();
         if BitBoard::<W, N>::NUM_WORDS == 2 {
             unsafe {
@@ -249,11 +265,11 @@ impl<const W: usize, const N: usize> SearchContext<W, N>
             }
             ret.words[0] = b.words[0] << shift;
         }
-        ret & self.valid_cells
+        ret
     }
 
     #[inline(always)]
-    pub fn down(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
+    fn down_unmasked(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         let mut ret = BitBoard::empty();
         if BitBoard::<W, N>::NUM_WORDS == 2 {
             unsafe {
@@ -270,7 +286,7 @@ impl<const W: usize, const N: usize> SearchContext<W, N>
             }
             ret.words[BitBoard::<W, N>::NUM_WORDS - 1] = b.words[BitBoard::<W, N>::NUM_WORDS - 1] >> shift;
         }
-        ret & self.valid_cells
+        ret
     }
 
     #[inline(always)]
@@ -316,5 +332,12 @@ impl<const W: usize, const N: usize> SearchContext<W, N>
     #[inline(always)]
     pub fn expand_neighbors(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
         self.up(b) | self.down(b) | self.left(b) | self.right(b)
+    }
+
+    /// `expand_neighbors` without clipping to the board: bits shifted past the top row stay set. For callers that
+    /// intersect the result with a set of board cells anyway.
+    #[inline(always)]
+    pub fn expand_neighbors_unmasked(&self, b: BitBoard<W, N>) -> BitBoard<W, N> {
+        self.up_unmasked(b) | self.down_unmasked(b) | self.left(b) | self.right(b)
     }
 }

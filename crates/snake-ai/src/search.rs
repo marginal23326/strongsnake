@@ -460,16 +460,21 @@ pub fn reconstruct_pv<const W: usize, const N: usize>(
 
 fn order_moves<const W: usize, const N: usize>(moves: &mut MoveList, grid: &Grid<W, N>, head: Point, history: &[i32], hint: Option<Direction>) {
     let head_idx = grid.idx(head.x, head.y);
-    moves.sort_by_cached_key(|m| {
-        let mut food = grid.food;
-        let mut food_dist = 1000;
-        while let Some(idx) = food.pop_first() {
-            let food_cell = Point {
-                x: (idx as i32) % grid.width,
-                y: (idx as i32) / grid.width,
-            };
-            food_dist = food_dist.min(manhattan(m.cell(), food_cell));
+    // One pass over the food serves every move (the index to coordinate division is the expensive part), kept by direction.
+    let mut food_dists = [1000; 4];
+    let mut food = grid.food;
+    while let Some(idx) = food.pop_first() {
+        let food_cell = Point {
+            x: (idx as i32) % grid.width,
+            y: (idx as i32) / grid.width,
+        };
+        for m in moves.as_slice() {
+            let d = &mut food_dists[m.dir_int];
+            *d = (*d).min(manhattan(m.cell(), food_cell));
         }
+    }
+    moves.sort_by_cached_key(|m| {
+        let food_dist = food_dists[m.dir_int];
         let center_dist = (2 * m.x - grid.width).abs() + (2 * m.y - grid.height).abs();
         (Some(m.dir) != hint, Reverse(history[head_idx * 4 + m.dir_int]), food_dist, center_dist)
     });

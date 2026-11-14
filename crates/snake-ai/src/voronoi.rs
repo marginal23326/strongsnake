@@ -31,6 +31,44 @@ pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_hea
 /// Turns of body release the Voronoi expansion models; later segments stay walls.
 const RELEASE_TURNS: usize = usize::MAX;
 
+/// Walks one snake's body from the tail, a segment per turn: the segment k cells from the tail can be entered on turn
+/// k + 1 (one turn later for a snake that just ate and grows). The caller already cleared both tails for turn 1.
+struct Release {
+    /// Turns still to wait before the first segment leaves.
+    wait: usize,
+    /// The next segment to leave, counted from the head. Never the head (0), so 0 means the body is used up.
+    next: usize,
+}
+
+impl Release {
+    fn new(len: usize, delay: usize) -> Self {
+        Self {
+            wait: delay,
+            next: len.saturating_sub(1),
+        }
+    }
+
+    /// The cell this snake frees on the next turn, if any.
+    #[inline(always)]
+    fn step(&mut self, body: &FastBody) -> Option<Point> {
+        if self.wait > 0 {
+            self.wait -= 1;
+            return None;
+        }
+        if self.next == 0 {
+            return None;
+        }
+        let idx = self.next;
+        self.next -= 1;
+        let cell = body.get(idx);
+        // A fresh start stacks segments on one cell: the segment nearer the head frees it instead.
+        if idx >= 2 && body.get(idx - 1) == cell {
+            return None;
+        }
+        Some(cell)
+    }
+}
+
 fn compute_voronoi_inner<const W: usize, const N: usize>(
     grid: &Grid<W, N>,
     my_head: Point,
@@ -42,6 +80,9 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
 ) -> VoronoiResult {
     let mut my_front = BitBoard::<W, N>::with_bit(grid.idx(my_head.x, my_head.y));
     let mut en_front = BitBoard::<W, N>::with_bit(grid.idx(enemy_head.x, enemy_head.y));
+    // Both fronts start at the heads.
+    let mut my_any = true;
+    let mut en_any = true;
 
     let mut my_territory = BitBoard::<W, N>::empty();
     let mut en_territory = BitBoard::<W, N>::empty();
@@ -50,81 +91,63 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
     let mut en_adj = BitBoard::<W, N>::empty();
 
     let heads = my_front | en_front;
-    let mut visited = heads | !grid.safe_cells();
+    // Cells still open to be claimed: not a wall, not a head, not claimed yet.
+    let mut unvisited = grid.safe_cells() & !heads;
     let ctx = &grid.ctx;
 
-    // Bodies leave the board from the tail: the segment k cells from the tail can be entered on turn k + 1 (one turn
-    // later for a snake that just ate and grows). The caller already cleared both tails for turn 1.
     let my_delay = (me.health >= 100) as usize;
     let en_delay = (enemy.health >= 100) as usize;
     let horizon = (my_len + my_delay).max(en_len + en_delay).min(RELEASE_TURNS);
-
-    // The cell this snake frees on `turn`, if any (never its head).
-    let freed_cell = |body: &FastBody, len: usize, delay: usize, turn: usize| -> Option<Point> {
-        let k = (turn - 1).checked_sub(delay)?;
-        if k + 2 > len {
-            return None;
-        }
-        let idx = len - 1 - k;
-        let cell = body.get(idx);
-        // A fresh start stacks segments on one cell: the segment nearer the head frees it instead.
-        if idx >= 2 && body.get(idx - 1) == cell {
-            return None;
-        }
-        Some(cell)
-    };
+    let mut my_release = Release::new(my_len, my_delay);
+    let mut en_release = Release::new(en_len, en_delay);
 
     let mut turn = 0usize;
     loop {
         turn += 1;
 
-        let my_raw = if my_front.any() { ctx.expand_neighbors(my_front) } else { BitBoard::<W, N>::empty() };
-        let en_raw = if en_front.any() { ctx.expand_neighbors(en_front) } else { BitBoard::<W, N>::empty() };
+        // Raw bits may land off the board; every use below masks them (`unvisited` has none, and `adj` is only read at board cells).
+        let my_raw = if my_any { ctx.expand_neighbors_unmasked(my_front) } else { BitBoard::<W, N>::empty() };
+        let en_raw = if en_any { ctx.expand_neighbors_unmasked(en_front) } else { BitBoard::<W, N>::empty() };
         my_adj |= my_raw;
         en_adj |= en_raw;
 
         // Cells that open up this turn: a snake that already touches one can take it.
         let mut my_free = BitBoard::<W, N>::empty();
         let mut en_free = BitBoard::<W, N>::empty();
-        let freed = if turn <= RELEASE_TURNS {
-            [freed_cell(&me.body, my_len, my_delay, turn), freed_cell(&enemy.body, en_len, en_delay, turn)]
-        } else {
-            [None, None]
-        };
-        for cell in freed.into_iter().flatten() {
-            let i = grid.idx(cell.x, cell.y);
-            if heads.get(i) {
-                continue;
+        if turn <= RELEASE_TURNS {
+            let mut freed = BitBoard::<W, N>::empty();
+            if let Some(cell) = my_release.step(&me.body) {
+                freed |= BitBoard::with_bit(grid.idx(cell.x, cell.y));
             }
-            visited.unset(i);
-            if my_adj.get(i) {
-                my_free.set(i);
+            if let Some(cell) = en_release.step(&enemy.body) {
+                freed |= BitBoard::with_bit(grid.idx(cell.x, cell.y));
             }
-            if en_adj.get(i) {
-                en_free.set(i);
-            }
+            // Heads never free up.
+            freed &= !heads;
+            unvisited |= freed;
+            my_free = freed & my_adj;
+            en_free = freed & en_adj;
         }
 
-        let unvisited = !visited;
         my_front = (my_raw & unvisited) | my_free;
         en_front = (en_raw & unvisited) | en_free;
 
-        let ties = my_front & en_front;
-
-        my_front ^= ties;
-        en_front ^= ties;
         // A contested cell goes to the longer snake, which survives the head-on and keeps expanding from it.
         // Equal lengths both die, so the cell stays nobody's.
         if my_len > en_len {
-            my_front |= ties;
+            en_front &= !my_front;
         } else if en_len > my_len {
-            en_front |= ties;
+            my_front &= !en_front;
+        } else {
+            let ties = my_front & en_front;
+            my_front ^= ties;
+            en_front ^= ties;
+            unvisited &= !ties;
         }
-        visited |= ties;
 
-        let active = my_front | en_front;
-
-        if active.is_empty() {
+        my_any = my_front.any();
+        en_any = en_front.any();
+        if !my_any && !en_any {
             // Nothing to expand, but a body that is still leaving can open a way later.
             if turn >= horizon {
                 break;
@@ -135,7 +158,7 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
         my_territory |= my_front;
         en_territory |= en_front;
 
-        visited |= active;
+        unvisited &= !(my_front | en_front);
     }
 
     VoronoiResult {
