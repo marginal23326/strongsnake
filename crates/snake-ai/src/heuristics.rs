@@ -1,6 +1,8 @@
+use std::cell::RefCell;
+
 use snake_domain::Point;
 
-use crate::{config::AiConfig, floodfill::flood_fill, grid::Grid, model::AgentState, voronoi::compute_voronoi};
+use crate::{config::{AiConfig, FoodCurveConfig}, floodfill::flood_fill, grid::Grid, model::AgentState, voronoi::compute_voronoi};
 
 /// Trap verdicts shrink in a dense tail race, where "sealed" pockets often reopen.
 const DENSE_VERDICT_DIVISOR: i32 = 1000;
@@ -9,6 +11,41 @@ const DENSE_MIN_LEN: usize = 20;
 #[inline(always)]
 fn manhattan(a: Point, b: Point) -> i32 {
     (a.x - b.x).abs() + (a.y - b.y).abs()
+}
+
+/// Buffers (health left after reaching the closest food) with a cached panic value.
+const PANIC_TABLE_LEN: usize = 128;
+
+struct PanicTable {
+    /// The curve parameters the values were computed for.
+    curve: [u64; 3],
+    values: [f64; PANIC_TABLE_LEN],
+}
+
+thread_local! {
+    static PANIC_TABLE: RefCell<Option<PanicTable>> = const { RefCell::new(None) };
+}
+
+/// How hard the food term pushes toward food, per step of distance, when `buffer` turns of health are to spare.
+fn panic_value(food: &FoodCurveConfig, buffer: i32) -> f64 {
+    if buffer <= 0 {
+        return food.intensity * 100.0;
+    }
+    let curve = |buffer: i32| food.intensity * (food.threshold / (buffer as f64 + 1.0)).powf(food.exponent);
+    if buffer as usize >= PANIC_TABLE_LEN {
+        return curve(buffer);
+    }
+    let key = [food.intensity.to_bits(), food.threshold.to_bits(), food.exponent.to_bits()];
+    PANIC_TABLE.with_borrow_mut(|cache| {
+        let table = match cache {
+            Some(table) if table.curve == key => table,
+            _ => cache.insert(PanicTable {
+                curve: key,
+                values: std::array::from_fn(|b| if b == 0 { 0.0 } else { curve(b as i32) }),
+            }),
+        };
+        table.values[buffer as usize]
+    })
 }
 
 /// A packed endgame: both snakes are long and together fill `dense_tail_race_occupancy` percent of the board.
@@ -108,12 +145,7 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
         }
 
         let buffer = me.health - closest_dist;
-        let panic_value = if buffer > 0 {
-            scores.food.intensity * (scores.food.threshold / (buffer as f64 + 1.0)).powf(scores.food.exponent)
-        } else {
-            scores.food.intensity * 100.0
-        };
-        score -= (closest_dist as f64 * panic_value) as i32;
+        score -= (closest_dist as f64 * panic_value(&scores.food, buffer)) as i32;
     }
 
     score

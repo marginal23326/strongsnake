@@ -68,7 +68,7 @@ fn flood_fill_inner<const W: usize, const N: usize>(
         let mut m = BitBoard::empty();
         let len = b.len() as i32;
         for (i, p) in b.iter().enumerate() {
-            if p.x >= 0 && p.x < grid.width && p.y >= 0 && p.y < grid.height {
+            if (p.x as u32) < grid.width as u32 && (p.y as u32) < grid.height as u32 {
                 let idx = grid.idx(p.x, p.y);
                 m.set(idx);
                 vanish_map[idx] = len - i as i32;
@@ -81,7 +81,7 @@ fn flood_fill_inner<const W: usize, const N: usize>(
         let mut m = BitBoard::empty();
         let len = b.len() as i32;
         for (i, p) in b.iter().enumerate() {
-            if p.x >= 0 && p.x < grid.width && p.y >= 0 && p.y < grid.height {
+            if (p.x as u32) < grid.width as u32 && (p.y as u32) < grid.height as u32 {
                 let idx = grid.idx(p.x, p.y);
                 m.set(idx);
                 // If both snakes overlap a cell (e.g. tail traces), take the max vanish time
