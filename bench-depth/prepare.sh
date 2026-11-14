@@ -9,6 +9,8 @@
 #                only, and each sym_* makes one of them symmetric (sym_all is the three together); no_food drops the
 #                food term. (sym_tail, vor_len and vor_time are in the engine now.)
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine frees all of them)
+#   vor_eat      the Voronoi expansion lets a snake that reaches food grow: from the first turn its front can take food, its
+#                tail frees one turn later (first food only; the real eating turn is not path-exact, ties are ignored)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
 #   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
@@ -62,6 +64,28 @@ apply_variant() { # dir variant
     no_qext) swap "$search" "if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" "if false && ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" ;;
     qext_*) swap_const "$search" QUIESCENCE_MAX_EXTENSIONS "${2#qext_}" ;;
     vor_time_*) swap_const "$d/crates/snake-ai/src/voronoi.rs" RELEASE_TURNS "${2#vor_time_}" ;;
+    vor_eat)
+      local vor=$d/crates/snake-ai/src/voronoi.rs
+      swap "$vor" "    let mut turn = 0usize;
+    loop {
+        turn += 1;
+" "    let (mut my_ate, mut en_ate) = (false, false);
+    let mut turn = 0usize;
+    loop {
+        turn += 1;
+"
+      swap "$vor" "        if turn <= RELEASE_TURNS {
+            let mut freed" "        // A front that reaches food this turn eats it and grows: the tail then stays one turn longer.
+        if !my_ate && my_any && (my_raw & unvisited & grid.food).any() {
+            my_ate = true;
+            my_release.wait += 1;
+        }
+        if !en_ate && en_any && (en_raw & unvisited & grid.food).any() {
+            en_ate = true;
+            en_release.wait += 1;
+        }
+        if turn <= RELEASE_TURNS {
+            let mut freed" ;;
     no_dense_shrink) swap "$d/crates/snake-ai/src/heuristics.rs" "const DENSE_VERDICT_DIVISOR: i32 = 1000;" "const DENSE_VERDICT_DIVISOR: i32 = 1;" ;;
     scale_*) # scale_<weight>_<percent>, e.g. scale_terr_70: that default weight at 70% of its value
       IFS=_ read -r _ w pct <<< "$2"
