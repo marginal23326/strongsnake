@@ -13,6 +13,8 @@
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
 #   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
+#   scale_<weight>_<pct>  one default weight of AiConfig at <pct>% of its value (bench-depth/weight_variants.py): weights are
+#                length, eat, terr, fint, fthr, fexp (food curve), trap, etrap; e.g. scale_terr_140. Same depth, same cost.
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
@@ -62,6 +64,9 @@ apply_variant() { # dir variant
     qext_*) swap_const "$search" QUIESCENCE_MAX_EXTENSIONS "${2#qext_}" ;;
     vor_time_*) swap_const "$d/crates/snake-ai/src/voronoi.rs" RELEASE_TURNS "${2#vor_time_}" ;;
     no_dense_shrink) swap "$d/crates/snake-ai/src/heuristics.rs" "const DENSE_VERDICT_DIVISOR: i32 = 1000;" "const DENSE_VERDICT_DIVISOR: i32 = 1;" ;;
+    scale_*) # scale_<weight>_<percent>, e.g. scale_terr_70: that default weight at 70% of its value
+      IFS=_ read -r _ w pct <<< "$2"
+      python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "$w" "$pct" ;;
     sym_*|no_food|food_vor) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
