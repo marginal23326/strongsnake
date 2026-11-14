@@ -9,14 +9,13 @@ use snake_ai::AiConfig;
 use snake_domain::{Direction, GameState, LcgRng};
 use tokio::sync::oneshot;
 
-use crate::services::{ArenaProgress, ArenaSummary, RegressionSummary, TrainerSummary, build_playground_state, default_scenario_dir};
+use crate::services::{ArenaProgress, ArenaSummary, RegressionSummary, build_playground_state, default_scenario_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Tab {
     Playground,
     Regression,
     Arena,
-    Trainer,
     Server,
 }
 
@@ -37,7 +36,6 @@ pub(super) enum WorkerMessage {
     ArenaProgress(ArenaProgress),
     Regression(Result<RegressionSummary, String>),
     Arena(Box<Result<ArenaSummary, String>>),
-    Trainer(Box<Result<TrainerSummary, String>>),
 }
 
 pub(super) struct SnakeGuiApp {
@@ -81,10 +79,6 @@ pub(super) struct SnakeGuiApp {
     pub(super) arena_snapshot_ticks: usize,
     pub(super) arena_progress: Option<ArenaProgress>,
     pub(super) arena_summary: Option<ArenaSummary>,
-    pub(super) trainer_pop: usize,
-    pub(super) trainer_gens: usize,
-    pub(super) trainer_games: usize,
-    pub(super) trainer_seed: u64,
     pub(super) server_addr: String,
     pub(super) server_handle: Option<GuiServerHandle>,
 
@@ -138,10 +132,6 @@ impl SnakeGuiApp {
             arena_snapshot_ticks: 10,
             arena_progress: None,
             arena_summary: None,
-            trainer_pop: 20,
-            trainer_gens: 10,
-            trainer_games: 4,
-            trainer_seed: 42,
             server_addr: "0.0.0.0:9000".to_owned(),
             server_handle: None,
             worker_rx: None,

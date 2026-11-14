@@ -7,7 +7,7 @@ It includes:
 - an HTTP move server
 - a regression harness for saved scenarios
 - an arena runner for bulk matches
-- a small genetic tuner for evaluation weights
+- a weight trainer: fits a quadratic model of score against the weights to side-swapped paired games and reports whether its result is statistically proven
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ cargo run --release -- test --depths 6
 cargo run --release -- arena --games 50 --opponent local
 
 # Trainer
-cargo run --release -- trainer --pop 30 --gens 25
+cargo run --release -- trainer --depth 5 --gens 40 --pairs 48   # --boards, --candidates, --sigma, --sigma-end, --validation-pairs, --save, --checkpoint/--resume
 ```
 
 ## How The AI Picks Moves

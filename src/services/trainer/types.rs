@@ -1,170 +1,141 @@
 use std::path::PathBuf;
 
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
-use snake_api::ApiFlavor;
+use snake_ai::AiConfig;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrainerOptions {
-    pub pop: usize,
+    /// Candidates per generation: the current mean plus mirrored pairs around it (so always odd).
+    pub candidates: usize,
     pub gens: usize,
-    pub elite: usize,
-    pub games: usize,
+    /// Pairs each candidate plays per generation.
+    pub pairs: usize,
     pub depth: usize,
-    pub width: i32,
-    pub height: i32,
+    pub boards: Vec<(i32, i32)>,
     pub max_turns: u32,
-    pub mut_rate: f64,
-    pub mut_strength: f64,
-    pub tourney: usize,
+    /// First step size: candidate weights differ from the mean by `exp(sigma * N(0, 1))`; it is also the trust radius of
+    /// the mean's move.
+    pub sigma: f64,
+    /// Step size of the last generation; the size shrinks geometrically from `sigma` to this.
+    pub sigma_end: f64,
     pub seed: u64,
+    /// Worker processes (0 = one per core).
+    pub workers: usize,
+    /// Fresh pairs the final answer is judged on.
+    pub validation_pairs: usize,
+    /// The fixed opponent; `None` means the starting weights. Depth and threads are overridden like the candidates'.
+    #[serde(skip)]
+    pub reference: Option<AiConfig>,
     pub save: Option<PathBuf>,
-    pub opponents: Vec<String>,
-    pub only_http: bool,
-    pub http_games: usize,
-    pub self_play: bool,
-    pub self_games: usize,
-    pub self_every: usize,
-    pub self_recent: usize,
-    pub self_hof: usize,
-    pub self_max_pool: usize,
-    pub staged_eval: bool,
-    pub quick_games: usize,
-    pub quick_http_games: usize,
-    pub quick_self_games: usize,
-    pub quick_turn_ratio: f64,
-    pub refine_top_frac: f64,
-    pub validation_games: usize,
-    pub progress: usize,
-    pub progress_every: usize,
-    pub verify: bool,
-    pub verify_depths: Vec<usize>,
-    pub verify_max_attempts: usize,
-    pub http_api_mode: ApiFlavor,
-    pub legacy_http: bool,
     pub resume: Option<PathBuf>,
     pub checkpoint: Option<PathBuf>,
 }
 
 impl TrainerOptions {
-    pub const DEFAULT_POP: usize = 30;
-    pub const DEFAULT_GENS: usize = 25;
-    pub const DEFAULT_ELITE: usize = 4;
-    pub const DEFAULT_GAMES: usize = 5;
-    pub const DEFAULT_DEPTH: usize = 3;
-    pub const DEFAULT_WIDTH: i32 = 16;
-    pub const DEFAULT_HEIGHT: i32 = 9;
-    pub const DEFAULT_MAX_TURNS: u32 = 500;
-    pub const DEFAULT_MUT_RATE: f64 = 0.25;
-    pub const DEFAULT_MUT_STRENGTH: f64 = 0.15;
-    pub const DEFAULT_TOURNEY: usize = 3;
+    pub const DEFAULT_CANDIDATES: usize = 17;
+    pub const DEFAULT_GENS: usize = 40;
+    pub const DEFAULT_PAIRS: usize = 48;
+    pub const DEFAULT_DEPTH: usize = 5;
+    pub const DEFAULT_BOARDS_RAW: &'static str = "11x11,16x9";
+    pub const DEFAULT_MAX_TURNS: u32 = 1500;
+    pub const DEFAULT_SIGMA: f64 = 0.3;
+    pub const DEFAULT_SIGMA_END: f64 = 0.08;
     pub const DEFAULT_SEED: u64 = 42;
-    pub const DEFAULT_OPPONENT: &'static str = "local-old";
-    pub const DEFAULT_ONLY_HTTP: bool = false;
-    pub const DEFAULT_HTTP_GAMES_OVERRIDE: usize = 0;
-    pub const DEFAULT_SELF_PLAY: bool = false;
-    pub const DEFAULT_SELF_GAMES: usize = 4;
-    pub const DEFAULT_SELF_EVERY: usize = 5;
-    pub const DEFAULT_SELF_RECENT: usize = 5;
-    pub const DEFAULT_SELF_HOF: usize = 4;
-    pub const DEFAULT_SELF_MAX_POOL: usize = 8;
-    pub const DEFAULT_STAGED_EVAL: bool = true;
-    pub const DEFAULT_QUICK_GAMES: usize = 4;
-    pub const DEFAULT_QUICK_HTTP_GAMES: usize = 2;
-    pub const DEFAULT_QUICK_SELF_GAMES: usize = 2;
-    pub const DEFAULT_QUICK_TURN_RATIO: f64 = 0.55;
-    pub const DEFAULT_REFINE_TOP_FRAC: f64 = 0.5;
-    pub const DEFAULT_VALIDATION_GAMES: usize = 10;
-    pub const DEFAULT_PROGRESS: usize = 0;
-    pub const DEFAULT_PROGRESS_EVERY: usize = 1;
-    pub const DEFAULT_VERIFY: bool = true;
-    pub const DEFAULT_VERIFY_DEPTHS_RAW: &'static str = "2,3";
-    pub const DEFAULT_VERIFY_MAX_ATTEMPTS: usize = 800;
-    pub const DEFAULT_HTTP_API_RAW: &'static str = "auto";
-    pub const DEFAULT_LEGACY_HTTP: bool = false;
-    pub const DEFAULT_VERIFY_DEPTHS: [usize; 2] = [2, 3];
+    pub const DEFAULT_WORKERS: usize = 0;
+    pub const DEFAULT_VALIDATION_PAIRS: usize = 1000;
+
+    /// Clamps the options to runnable values.
+    pub(super) fn normalize(&mut self) {
+        self.candidates = self.candidates.max(3) | 1;
+        self.sigma = self.sigma.max(1e-3);
+        self.sigma_end = self.sigma_end.clamp(1e-3, self.sigma);
+        self.gens = self.gens.max(1);
+        self.pairs = self.pairs.max(1);
+        self.depth = self.depth.max(1);
+        if self.boards.is_empty() {
+            self.boards = parse_boards(Self::DEFAULT_BOARDS_RAW).expect("default boards parse");
+        }
+        if self.workers == 0 {
+            self.workers = std::thread::available_parallelism().map_or(1, |n| n.get());
+        }
+        self.validation_pairs = self.validation_pairs.max(1);
+    }
+
+    /// What a checkpoint must match to be resumed.
+    pub(super) fn fingerprint(&self) -> String {
+        format!(
+            "method=surface candidates={} pairs={} depth={} boards={:?} max_turns={} sigma={} end={} seed={}",
+            self.candidates, self.pairs, self.depth, self.boards, self.max_turns, self.sigma, self.sigma_end, self.seed
+        )
+    }
 }
 
 impl Default for TrainerOptions {
     fn default() -> Self {
         Self {
-            pop: Self::DEFAULT_POP,
+            candidates: Self::DEFAULT_CANDIDATES,
             gens: Self::DEFAULT_GENS,
-            elite: Self::DEFAULT_ELITE,
-            games: Self::DEFAULT_GAMES,
+            pairs: Self::DEFAULT_PAIRS,
             depth: Self::DEFAULT_DEPTH,
-            width: Self::DEFAULT_WIDTH,
-            height: Self::DEFAULT_HEIGHT,
+            boards: parse_boards(Self::DEFAULT_BOARDS_RAW).expect("default boards parse"),
             max_turns: Self::DEFAULT_MAX_TURNS,
-            mut_rate: Self::DEFAULT_MUT_RATE,
-            mut_strength: Self::DEFAULT_MUT_STRENGTH,
-            tourney: Self::DEFAULT_TOURNEY,
+            sigma: Self::DEFAULT_SIGMA,
+            sigma_end: Self::DEFAULT_SIGMA_END,
             seed: Self::DEFAULT_SEED,
+            workers: Self::DEFAULT_WORKERS,
+            validation_pairs: Self::DEFAULT_VALIDATION_PAIRS,
+            reference: None,
             save: None,
-            opponents: vec![Self::DEFAULT_OPPONENT.to_owned()],
-            only_http: Self::DEFAULT_ONLY_HTTP,
-            http_games: Self::DEFAULT_GAMES,
-            self_play: Self::DEFAULT_SELF_PLAY,
-            self_games: Self::DEFAULT_SELF_GAMES,
-            self_every: Self::DEFAULT_SELF_EVERY,
-            self_recent: Self::DEFAULT_SELF_RECENT,
-            self_hof: Self::DEFAULT_SELF_HOF,
-            self_max_pool: Self::DEFAULT_SELF_MAX_POOL,
-            staged_eval: Self::DEFAULT_STAGED_EVAL,
-            quick_games: Self::DEFAULT_QUICK_GAMES,
-            quick_http_games: Self::DEFAULT_QUICK_HTTP_GAMES,
-            quick_self_games: Self::DEFAULT_QUICK_SELF_GAMES,
-            quick_turn_ratio: Self::DEFAULT_QUICK_TURN_RATIO,
-            refine_top_frac: Self::DEFAULT_REFINE_TOP_FRAC,
-            validation_games: Self::DEFAULT_VALIDATION_GAMES,
-            progress: Self::DEFAULT_PROGRESS,
-            progress_every: Self::DEFAULT_PROGRESS_EVERY,
-            verify: Self::DEFAULT_VERIFY,
-            verify_depths: Self::DEFAULT_VERIFY_DEPTHS.to_vec(),
-            verify_max_attempts: Self::DEFAULT_VERIFY_MAX_ATTEMPTS,
-            http_api_mode: ApiFlavor::Auto,
-            legacy_http: Self::DEFAULT_LEGACY_HTTP,
             resume: None,
             checkpoint: None,
         }
     }
 }
 
-impl TrainerOptions {
-    pub fn for_gui(pop: usize, gens: usize, games: usize, seed: u64, depth: usize) -> Self {
-        Self {
-            pop,
-            gens,
-            games,
-            http_games: games,
-            seed,
-            depth,
-            ..Self::default()
+/// `11x11,16x9` -> `[(11, 11), (16, 9)]`.
+pub fn parse_boards(raw: &str) -> Result<Vec<(i32, i32)>> {
+    let mut boards = Vec::new();
+    for part in raw.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let Some((w, h)) = part.split_once('x') else {
+            bail!("board `{part}` must look like 11x11");
+        };
+        let (w, h) = (w.trim().parse::<i32>()?, h.trim().parse::<i32>()?);
+        if w < 4 || h < 4 {
+            bail!("board {w}x{h} is too small");
         }
+        boards.push((w, h));
     }
-
-    pub(super) fn normalize(&mut self) {
-        self.pop = self.pop.max(2);
-        self.gens = self.gens.max(1);
-        self.elite = self.elite.min(self.pop).max(1);
-        self.games = self.games.max(1);
-        self.http_games = self.http_games.max(1);
-        self.self_games = self.self_games.max(1);
+    if boards.is_empty() {
+        bail!("no boards given");
     }
+    Ok(boards)
 }
 
+/// How the final answer did on fresh validation pairs.
 #[derive(Debug, Clone, Serialize)]
 pub struct TrainerSummary {
-    pub best_fitness: f64,
-    pub best_generation: usize,
-    pub genes: Vec<f64>,
+    /// The Elo interval lies above zero.
+    pub proven: bool,
+    /// Mean pair score (0.5 = even).
+    pub score: f64,
+    pub elo: f64,
+    pub elo_low: f64,
+    pub elo_high: f64,
+    pub validation_pairs: usize,
+    /// The tuned weights by name.
+    pub genes: Vec<(String, f64)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct TrainerCheckpoint {
+    pub fingerprint: String,
+    /// Generations completed.
     pub generation: usize,
-    pub pop: Vec<Vec<f64>>,
-    pub best_genes: Vec<f64>,
-    pub best_score: f64,
-    pub best_generation: usize,
+    pub mean: Vec<f64>,
+    /// The mean after every completed generation.
+    pub history: Vec<Vec<f64>>,
+    /// Every candidate result so far: the fit uses all of them.
+    pub observations: Vec<super::surface::Observation>,
 }

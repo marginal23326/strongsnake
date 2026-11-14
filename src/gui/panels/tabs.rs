@@ -4,8 +4,8 @@ use snake_domain::Direction;
 
 use crate::RegressionOutput;
 use crate::services::{
-    ArenaOptions, ArenaSummary, RegressionOptions, TrainerOptions, parse_arena_find_modes, parse_depths, run_arena_with_progress,
-    run_regression_suite, run_trainer,
+    ArenaOptions, ArenaSummary, RegressionOptions, parse_arena_find_modes, parse_depths, run_arena_with_progress,
+    run_regression_suite,
 };
 
 use super::super::state::{EditMode, SnakeGuiApp, WorkerMessage};
@@ -328,48 +328,6 @@ impl SnakeGuiApp {
             let snapshot = summary.clone();
             self.draw_arena_summary(ui, &snapshot);
         }
-    }
-
-    pub(super) fn show_trainer_tab(&mut self, ui: &mut egui::Ui) {
-        ui.heading(RichText::new("Genetic Trainer").strong());
-        ui.add_space(8.0);
-
-        ui_card(ui, |ui| {
-            egui::Grid::new("trainer_grid").spacing([16.0, 12.0]).show(ui, |ui| {
-                ui.label(RichText::new("Population Size:").strong());
-                ui.add(egui::DragValue::new(&mut self.trainer_pop).range(2..=300));
-                ui.end_row();
-
-                ui.label(RichText::new("Generations:").strong());
-                ui.add(egui::DragValue::new(&mut self.trainer_gens).range(1..=1000));
-                ui.end_row();
-
-                ui.label(RichText::new("Games per Eval:").strong());
-                ui.add(egui::DragValue::new(&mut self.trainer_games).range(1..=100));
-                ui.end_row();
-
-                ui.label(RichText::new("Seed:").strong());
-                ui.add(egui::DragValue::new(&mut self.trainer_seed));
-                ui.end_row();
-            });
-
-            ui.add_space(16.0);
-            let run_btn = ui.add_enabled(!self.worker_running, egui::Button::new("Start Trainer"));
-            if run_btn.clicked() {
-                let cfg = self.cfg.clone();
-                let opts = TrainerOptions::for_gui(
-                    self.trainer_pop,
-                    self.trainer_gens,
-                    self.trainer_games,
-                    self.trainer_seed,
-                    self.cfg.max_depth,
-                );
-                self.start_worker("trainer", move |tx| {
-                    let result = Self::run_async_job(run_trainer(cfg, opts));
-                    let _ = tx.send(WorkerMessage::Trainer(Box::new(result)));
-                });
-            }
-        });
     }
 
     pub(super) fn show_server_tab(&mut self, ui: &mut egui::Ui) {

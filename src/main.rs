@@ -20,8 +20,8 @@ use crate::{
     server::run_server,
     services::{
         ArenaOptions, RegressionOptions, RegressionOutput, TrainerOptions, default_scenario_dir, format_arena_progress_line,
-        format_arena_summary_report, format_opponent_roster, parse_arena_find_modes, parse_depths, run_arena_with_progress,
-        run_regression_suite, run_trainer,
+        format_arena_summary_report, format_opponent_roster, parse_arena_find_modes, parse_boards, parse_depths,
+        run_arena_with_progress, run_regression_suite, run_trainer, run_trainer_worker,
     },
 };
 
@@ -81,6 +81,9 @@ enum Command {
     Test(TestCliArgs),
     Arena(ArenaCliArgs),
     Trainer(Box<TrainerCliArgs>),
+    /// Internal: plays a batch of trainer pairs for the trainer process (job on stdin, result on stdout).
+    #[command(hide = true)]
+    TrainerWorker,
 }
 
 #[derive(Debug, Args)]
@@ -159,6 +162,8 @@ struct ArenaCliArgs {
         default_value_t = ArenaOptions::DEFAULT_RESUME
     )]
     resume: bool,
+    #[arg(long = "list-opponents", alias = "listOpponents", short = 'L', action = ArgAction::SetTrue)]
+    list_opponents: bool,
     #[arg(long = "snapshot-file", short = 'R', alias = "resume-file", alias = "snapshotFile")]
     snapshot_file: Option<PathBuf>,
     #[arg(
@@ -196,216 +201,79 @@ impl ArenaCliArgs {
 
 #[derive(Debug, Args)]
 struct TrainerCliArgs {
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_POP)]
-    pop: usize,
+    #[arg(long, alias = "pop", default_value_t = TrainerOptions::DEFAULT_CANDIDATES, help = "Candidates per generation (rounded up to an odd number: the mean plus mirrored pairs)")]
+    candidates: usize,
     #[arg(long, default_value_t = TrainerOptions::DEFAULT_GENS)]
     gens: usize,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_ELITE)]
-    elite: usize,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_GAMES)]
-    games: usize,
-    #[arg(long, value_parser = parse_positive_usize)]
+    #[arg(long, default_value_t = TrainerOptions::DEFAULT_PAIRS, help = "Pairs (one seed, both sides) each candidate plays per generation")]
+    pairs: usize,
+    #[arg(long, value_parser = parse_positive_usize, help = "Search depth of both sides")]
     depth: Option<usize>,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_WIDTH)]
-    width: i32,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_HEIGHT)]
-    height: i32,
+    #[arg(long, default_value = TrainerOptions::DEFAULT_BOARDS_RAW, help = "Comma-separated boards, e.g. 11x11,16x9")]
+    boards: String,
     #[arg(long, default_value_t = TrainerOptions::DEFAULT_MAX_TURNS)]
     max_turns: u32,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_MUT_RATE)]
-    mut_rate: f64,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_MUT_STRENGTH)]
-    mut_strength: f64,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_TOURNEY)]
-    tourney: usize,
-    #[arg(long)]
-    save: Option<PathBuf>,
-    #[arg(long, short = 'o', action = ArgAction::Append)]
-    opponent: Vec<String>,
-    #[arg(
-        long = "onlyHttp",
-        alias = "only-http",
-        default_value_t = TrainerOptions::DEFAULT_ONLY_HTTP
-    )]
-    only_http: bool,
-    #[arg(
-        long = "httpGames",
-        alias = "http-games",
-        default_value_t = TrainerOptions::DEFAULT_HTTP_GAMES_OVERRIDE
-    )]
-    http_games: usize,
-    #[arg(
-        long = "selfPlay",
-        alias = "self-play",
-        default_value_t = TrainerOptions::DEFAULT_SELF_PLAY
-    )]
-    self_play: bool,
-    #[arg(
-        long = "selfGames",
-        alias = "self-games",
-        default_value_t = TrainerOptions::DEFAULT_SELF_GAMES
-    )]
-    self_games: usize,
-    #[arg(
-        long = "selfEvery",
-        alias = "self-every",
-        default_value_t = TrainerOptions::DEFAULT_SELF_EVERY
-    )]
-    self_every: usize,
-    #[arg(
-        long = "selfRecent",
-        alias = "self-recent",
-        default_value_t = TrainerOptions::DEFAULT_SELF_RECENT
-    )]
-    self_recent: usize,
-    #[arg(
-        long = "selfHof",
-        alias = "self-hof",
-        default_value_t = TrainerOptions::DEFAULT_SELF_HOF
-    )]
-    self_hof: usize,
-    #[arg(
-        long = "selfMaxPool",
-        alias = "self-max-pool",
-        default_value_t = TrainerOptions::DEFAULT_SELF_MAX_POOL
-    )]
-    self_max_pool: usize,
-    #[arg(long = "noStagedEval", alias = "no-staged-eval", default_value_t = false)]
-    no_staged_eval: bool,
-    #[arg(
-        long = "quickGames",
-        alias = "quick-games",
-        default_value_t = TrainerOptions::DEFAULT_QUICK_GAMES
-    )]
-    quick_games: usize,
-    #[arg(
-        long = "quickHttpGames",
-        alias = "quick-http-games",
-        default_value_t = TrainerOptions::DEFAULT_QUICK_HTTP_GAMES
-    )]
-    quick_http_games: usize,
-    #[arg(
-        long = "quickSelfGames",
-        alias = "quick-self-games",
-        default_value_t = TrainerOptions::DEFAULT_QUICK_SELF_GAMES
-    )]
-    quick_self_games: usize,
-    #[arg(
-        long = "quickTurnRatio",
-        alias = "quick-turn-ratio",
-        default_value_t = TrainerOptions::DEFAULT_QUICK_TURN_RATIO
-    )]
-    quick_turn_ratio: f64,
-    #[arg(
-        long = "refineTopFrac",
-        alias = "refine-top-frac",
-        default_value_t = TrainerOptions::DEFAULT_REFINE_TOP_FRAC
-    )]
-    refine_top_frac: f64,
-    #[arg(
-        long = "validationGames",
-        alias = "validation-games",
-        default_value_t = TrainerOptions::DEFAULT_VALIDATION_GAMES
-    )]
-    validation_games: usize,
-    #[arg(long, default_value_t = TrainerOptions::DEFAULT_PROGRESS)]
-    progress: usize,
-    #[arg(
-        long = "progressEvery",
-        alias = "progress-every",
-        default_value_t = TrainerOptions::DEFAULT_PROGRESS_EVERY
-    )]
-    progress_every: usize,
+    #[arg(long, default_value_t = TrainerOptions::DEFAULT_SIGMA, help = "First step size (relative weight change, log scale)")]
+    sigma: f64,
+    #[arg(long, default_value_t = TrainerOptions::DEFAULT_SIGMA_END, help = "Step size of the last generation")]
+    sigma_end: f64,
     #[arg(long, default_value_t = TrainerOptions::DEFAULT_SEED)]
     seed: u64,
-    #[arg(long = "noVerify", alias = "no-verify", default_value_t = false)]
-    no_verify: bool,
-    #[arg(
-        long = "verifyDepths",
-        alias = "verify-depths",
-        default_value = TrainerOptions::DEFAULT_VERIFY_DEPTHS_RAW
-    )]
-    verify_depths: String,
-    #[arg(
-        long = "verifyMaxAttempts",
-        alias = "verify-max-attempts",
-        default_value_t = TrainerOptions::DEFAULT_VERIFY_MAX_ATTEMPTS
-    )]
-    verify_max_attempts: usize,
-    #[arg(long = "list-opponents", alias = "listOpponents", short = 'L', action = ArgAction::SetTrue)]
-    list_opponents: bool,
-    #[arg(
-        long = "httpApi",
-        alias = "http-api",
-        default_value = TrainerOptions::DEFAULT_HTTP_API_RAW
-    )]
-    http_api: String,
-    #[arg(
-        long = "legacyHttp",
-        alias = "legacy-http",
-        default_value_t = TrainerOptions::DEFAULT_LEGACY_HTTP
-    )]
-    legacy_http: bool,
+    #[arg(long, default_value_t = TrainerOptions::DEFAULT_WORKERS, help = "Worker processes (0 = one per core)")]
+    workers: usize,
+    #[arg(long, default_value_t = TrainerOptions::DEFAULT_VALIDATION_PAIRS, help = "Fresh pairs the final answer is judged on")]
+    validation_pairs: usize,
+    #[arg(long, help = "Start (and default reference) weights: an AiConfig JSON or a saved result")]
+    start: Option<PathBuf>,
+    #[arg(long, help = "Fixed opponent weights (same formats as --start)")]
+    reference: Option<PathBuf>,
+    #[arg(long)]
+    save: Option<PathBuf>,
     #[arg(long)]
     resume: Option<PathBuf>,
     #[arg(long)]
     checkpoint: Option<PathBuf>,
 }
 
+/// An `AiConfig` from a JSON file: either the config itself or a trainer result (its `bestConfig`).
+fn load_start_config(path: &Path) -> Result<AiConfig> {
+    let raw = std::fs::read_to_string(path)?;
+    let mut value: serde_json::Value = serde_json::from_str(&raw)?;
+    if let Some(best) = value.get_mut("bestConfig") {
+        value = best.take();
+    }
+    Ok(serde_json::from_value(value)?)
+}
+
 impl TrainerCliArgs {
-    fn into_runtime(self, base_cfg: AiConfig, rust_root: &Path, depth: Option<usize>) -> (AiConfig, TrainerOptions) {
-        let games = self.games;
-        let http_games_raw = self.http_games;
-        let effective_depth = depth.unwrap_or(TrainerOptions::DEFAULT_DEPTH);
+    fn into_runtime(self, base_cfg: AiConfig, rust_root: &Path, depth: Option<usize>) -> Result<(AiConfig, TrainerOptions)> {
         let options = TrainerOptions {
-            pop: self.pop,
+            candidates: self.candidates,
             gens: self.gens,
-            elite: self.elite,
-            games,
-            depth: effective_depth,
-            width: self.width,
-            height: self.height,
+            pairs: self.pairs,
+            depth: depth.unwrap_or(TrainerOptions::DEFAULT_DEPTH),
+            boards: parse_boards(&self.boards)?,
             max_turns: self.max_turns,
-            mut_rate: self.mut_rate,
-            mut_strength: self.mut_strength,
-            tourney: self.tourney,
+            sigma: self.sigma,
+            sigma_end: self.sigma_end,
             seed: self.seed,
-            save: self.save.or_else(|| Some(rust_root.join("data").join("ga_results.json"))),
-            opponents: if self.opponent.is_empty() {
-                vec![TrainerOptions::DEFAULT_OPPONENT.to_owned()]
-            } else {
-                self.opponent
-            },
-            only_http: self.only_http,
-            http_games: if http_games_raw == 0 { games } else { http_games_raw },
-            self_play: self.self_play,
-            self_games: self.self_games,
-            self_every: self.self_every,
-            self_recent: self.self_recent,
-            self_hof: self.self_hof,
-            self_max_pool: self.self_max_pool,
-            staged_eval: !self.no_staged_eval,
-            quick_games: self.quick_games,
-            quick_http_games: self.quick_http_games,
-            quick_self_games: self.quick_self_games,
-            quick_turn_ratio: self.quick_turn_ratio,
-            refine_top_frac: self.refine_top_frac,
-            validation_games: self.validation_games,
-            progress: self.progress,
-            progress_every: self.progress_every,
-            verify: !self.no_verify,
-            verify_depths: parse_depths(&self.verify_depths),
-            verify_max_attempts: self.verify_max_attempts,
-            http_api_mode: normalize_api_type(Some(self.http_api.as_str())),
-            legacy_http: self.legacy_http,
+            workers: self.workers,
+            validation_pairs: self.validation_pairs,
+            reference: self.reference.as_deref().map(load_start_config).transpose()?,
+            save: self.save.or_else(|| Some(rust_root.join("data").join("trainer_result.json"))),
             resume: self.resume,
             checkpoint: self.checkpoint,
         };
-
-        let mut cfg = base_cfg;
+        let mut cfg = match &self.start {
+            Some(path) => {
+                let mut start = load_start_config(path)?;
+                start.runtime = base_cfg.runtime.clone();
+                start
+            }
+            None => base_cfg,
+        };
         cfg.max_depth = options.depth;
-
-        (cfg, options)
+        Ok((cfg, options))
     }
 }
 
@@ -492,6 +360,10 @@ fn main() -> Result<()> {
             }
         }
         Some(Command::Arena(args)) => {
+            if args.list_opponents {
+                println!("{}", format_opponent_roster());
+                return Ok(());
+            }
             apply_depth_override(&mut base_cfg, cli.depth, args.depth);
             let rust_root = rust_root();
             let options = args.into_runtime(&rust_root);
@@ -505,21 +377,13 @@ fn main() -> Result<()> {
         }
         Some(Command::Trainer(args)) => {
             let args = *args;
-            if args.list_opponents {
-                println!("{}", format_opponent_roster());
-                return Ok(());
-            }
-
             let effective_depth = resolve_depth(cli.depth, args.depth);
             let rust_root = rust_root();
-            let (cfg, options) = args.into_runtime(base_cfg, &rust_root, effective_depth);
+            let (cfg, options) = args.into_runtime(base_cfg, &rust_root, effective_depth)?;
             let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
-            let summary = rt.block_on(run_trainer(cfg, options))?;
-            println!(
-                "Trainer summary: best_fitness={:.3} generation={}",
-                summary.best_fitness, summary.best_generation
-            );
+            rt.block_on(run_trainer(cfg, options))?;
         }
+        Some(Command::TrainerWorker) => run_trainer_worker()?,
     }
 
     Ok(())

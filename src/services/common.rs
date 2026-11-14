@@ -69,6 +69,8 @@ pub(crate) struct MatchRuntimeOptions {
     pub rng_seed: Option<u32>,
     pub scripted_opponent_moves: VecDeque<Direction>,
     pub capture_trace: bool,
+    /// Plays the game from the other side: the two snakes swap start positions (and turn-order slots).
+    pub swap_sides: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -309,6 +311,12 @@ pub(crate) async fn run_single_match_with_options_and_client(
         let rng_seed = options.rng_seed.unwrap_or(seed);
         build_initial_state(match_cfg.width, match_cfg.height, rng_seed)
     };
+    if options.swap_sides
+        && let [first, second, ..] = state.board.snakes.as_mut_slice()
+    {
+        std::mem::swap(&mut first.id, &mut second.id);
+        std::mem::swap(&mut first.name, &mut second.name);
+    }
     let mut death = MatchDeathSummary::default();
     let mut trace = options.capture_trace.then(Vec::new);
     let (local_idx, opponent_idx) = resolve_match_snake_indices(&state);

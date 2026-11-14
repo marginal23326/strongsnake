@@ -1,16 +1,10 @@
 use rand::{RngExt, rngs::StdRng};
 use snake_ai::AiConfig;
 
+/// The tuned weights. `territory_control` is the unit the others are measured in, so it stays fixed; the verdict sizes
+/// only matter in rare endgames.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct GeneSpec {
-    pub key: GeneKey,
-    pub min: f64,
-    pub max: f64,
-    pub is_int: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) enum GeneKey {
+enum Gene {
     Length,
     EatReward,
     FoodIntensity,
@@ -18,7 +12,28 @@ pub(super) enum GeneKey {
     FoodExponent,
 }
 
-impl GeneKey {
+const GENES: [Gene; 5] = [Gene::Length, Gene::EatReward, Gene::FoodIntensity, Gene::FoodThreshold, Gene::FoodExponent];
+
+pub(super) const GENE_COUNT: usize = GENES.len();
+
+/// A candidate is the start config with each weight scaled by `exp(offset)`, so one step size is the same relative change
+/// for every weight.
+pub(super) type Offsets = Vec<f64>;
+
+/// No weight moves further than a factor of 8 from where it started.
+pub(super) const MAX_OFFSET: f64 = 2.0794415416798357; // ln 8
+
+impl Gene {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Length => "length",
+            Self::EatReward => "eat_reward",
+            Self::FoodIntensity => "food.intensity",
+            Self::FoodThreshold => "food.threshold",
+            Self::FoodExponent => "food.exponent",
+        }
+    }
+
     fn read(self, cfg: &AiConfig) -> f64 {
         match self {
             Self::Length => cfg.scores.length as f64,
@@ -40,77 +55,40 @@ impl GeneKey {
     }
 }
 
-const GENE_SPECS: [GeneSpec; 5] = [
-    GeneSpec {
-        key: GeneKey::Length,
-        min: 0.0,
-        max: 10_000.0,
-        is_int: true,
-    },
-    GeneSpec {
-        key: GeneKey::EatReward,
-        min: 100.0,
-        max: 10_000.0,
-        is_int: true,
-    },
-    GeneSpec {
-        key: GeneKey::FoodIntensity,
-        min: 100.0,
-        max: 4_000.0,
-        is_int: false,
-    },
-    GeneSpec {
-        key: GeneKey::FoodThreshold,
-        min: 3.0,
-        max: 20.0,
-        is_int: false,
-    },
-    GeneSpec {
-        key: GeneKey::FoodExponent,
-        min: 1.0,
-        max: 3.0,
-        is_int: false,
-    },
-];
-
-pub(super) fn read_genes(cfg: &AiConfig) -> Vec<f64> {
-    GENE_SPECS.iter().map(|spec| spec.key.read(cfg)).collect()
-}
-
-pub(super) fn apply_genes(mut cfg: AiConfig, genes: &[f64]) -> AiConfig {
-    for (spec, value) in GENE_SPECS.iter().zip(genes.iter().copied()) {
-        spec.key.write(&mut cfg, value);
+/// `start` with its weights scaled by `exp(offsets)`; weights at or below zero stay put.
+pub(super) fn apply(start: &AiConfig, offsets: &[f64]) -> AiConfig {
+    let mut cfg = start.clone();
+    for (gene, offset) in GENES.iter().zip(offsets) {
+        let base = gene.read(start);
+        if base > 0.0 {
+            gene.write(&mut cfg, base * offset.clamp(-MAX_OFFSET, MAX_OFFSET).exp());
+        }
     }
     cfg
 }
 
-pub(super) fn random_chromosome(rng: &mut StdRng) -> Vec<f64> {
-    GENE_SPECS
-        .iter()
-        .map(|spec| {
-            let mut v = rng.random_range(spec.min..=spec.max);
-            if spec.is_int {
-                v = v.round();
-            }
-            v
-        })
-        .collect()
+/// The tuned weights by name.
+pub(super) fn values(cfg: &AiConfig) -> Vec<(String, f64)> {
+    GENES.iter().map(|g| (g.name().to_owned(), g.read(cfg))).collect()
 }
 
-pub(super) fn crossover(a: &[f64], b: &[f64], rng: &mut StdRng) -> Vec<f64> {
-    a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| if rng.random::<bool>() { *x } else { *y })
-        .collect()
+/// One standard normal sample (Box-Muller).
+pub(super) fn gauss(rng: &mut StdRng) -> f64 {
+    let u1 = 1.0 - rng.random::<f64>();
+    let u2 = rng.random::<f64>();
+    (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
 }
 
-pub(super) fn mutate(chromosome: &mut [f64], rng: &mut StdRng, rate: f64, strength: f64) {
-    for (gene, spec) in chromosome.iter_mut().zip(GENE_SPECS.iter()) {
-        if rng.random::<f64>() > rate {
-            continue;
-        }
-        let span = spec.max - spec.min;
-        let delta = (rng.random::<f64>() * 2.0 - 1.0) * span * strength;
-        *gene = (*gene + delta).clamp(spec.min, spec.max);
-    }
+/// Two candidates around `mean`, mirror images of each other: `mean` plus and minus one random step of size `sigma`.
+/// Mirrored pairs keep the linear and the quadratic effects apart in the fit.
+pub(super) fn sample_antithetic(mean: &[f64], sigma: f64, rng: &mut StdRng) -> (Offsets, Offsets) {
+    let step: Vec<f64> = mean.iter().map(|_| sigma * gauss(rng)).collect();
+    let at = |sign: f64| mean.iter().zip(&step).map(|(m, s)| (m + sign * s).clamp(-MAX_OFFSET, MAX_OFFSET)).collect();
+    (at(1.0), at(-1.0))
+}
+
+/// Component-wise average.
+pub(super) fn average(points: &[&[f64]]) -> Offsets {
+    let n = points.len().max(1) as f64;
+    (0..GENE_COUNT).map(|i| points.iter().map(|p| p[i]).sum::<f64>() / n).collect()
 }

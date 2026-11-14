@@ -56,7 +56,6 @@ impl SnakeGuiApp {
                                     (Tab::Playground, "Playground"),
                                     (Tab::Regression, "Regression"),
                                     (Tab::Arena, "Arena"),
-                                    (Tab::Trainer, "Trainer"),
                                     (Tab::Server, "Server"),
                                 ] {
                                     let selected = self.tab == tab;
@@ -163,7 +162,6 @@ impl SnakeGuiApp {
                 egui::ScrollArea::vertical().show(ui, |ui| match self.tab {
                     Tab::Regression => self.show_regression_tab(ui),
                     Tab::Arena => self.show_arena_tab(ui),
-                    Tab::Trainer => self.show_trainer_tab(ui),
                     Tab::Server => self.show_server_tab(ui),
                     _ => {}
                 });

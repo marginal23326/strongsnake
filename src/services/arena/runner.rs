@@ -54,6 +54,7 @@ where
                         rng_seed: Some(snapshot.rng_seed),
                         scripted_opponent_moves: snapshot.opponent_moves,
                         capture_trace: capture_during_run,
+                        ..Default::default()
                     },
                 )
             } else {

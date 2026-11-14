@@ -88,16 +88,6 @@ impl SnakeGuiApp {
                     }
                     true
                 }
-                WorkerMessage::Trainer(result) => {
-                    match *result {
-                        Ok(summary) => self.log_line(format!(
-                            "Trainer done: best_fitness={:.3} generation={}",
-                            summary.best_fitness, summary.best_generation
-                        )),
-                        Err(err) => self.log_line(format!("Trainer failed: {err}")),
-                    }
-                    true
-                }
             };
             if is_terminal {
                 worker_finished = true;
