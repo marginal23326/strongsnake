@@ -16,10 +16,6 @@ below removes one of those asymmetries (or, for the control, the term itself), s
   no_food        control: the food term and its hard verdict are removed. If sym_food and no_food both do no better
                  than `none`, the food term is not earning its place either way.
 
-  food_vor       the food term measures the distance to the food my own Voronoi front reaches first, in real turns around the
-                 bodies (the turn the expansion first touches food), instead of the Manhattan distance to the nearest food
-                 of all. When none is mine it falls back to Manhattan. The hard "cannot reach food in time" verdict is unchanged.
-
 Landed in the engine, so no longer variants: sym_tail = both leaving tails cleared before Voronoi; vor_len = a contested
 Voronoi cell goes to the longer snake; vor_time = body segments leave the Voronoi walls one by one.
 
@@ -106,63 +102,7 @@ FOOD_HARD = """        match (my_doomed, en_doomed) {
             (false, false) => {}
         }"""
 
-VF_VOR = [
-    ("""    pub enemy_count: i32,
-}""", """    pub enemy_count: i32,
-    /// Turns my front needs to reach its first food, i32::MAX if it never does.
-    pub my_food: i32,
-}"""),
-    ("    let mut turn = 0usize;\n", "    let mut my_food = i32::MAX;\n    let mut turn = 0usize;\n"),
-    ("""        visited |= ties;
-
-        let active = my_front | en_front;""", """        visited |= ties;
-
-        if my_food == i32::MAX && (my_front & grid.food).any() {
-            my_food = turn as i32;
-        }
-
-        let active = my_front | en_front;"""),
-    ("""        enemy_count: en_territory.count_ones() as i32,
-    }""", """        enemy_count: en_territory.count_ones() as i32,
-        my_food,
-    }"""),
-]
-VF_HEUR = [
-    ("""        let buffer = me.health - closest_dist;
-        let panic_value = if buffer > 0 {
-            scores.food.intensity * (scores.food.threshold / (buffer as f64 + 1.0)).powf(scores.food.exponent)
-        } else {
-            scores.food.intensity * 100.0
-        };
-        score -= (closest_dist as f64 * panic_value) as i32;
-""", """        // The food my own front reaches first, in real turns around the bodies; Manhattan to the nearest when none is mine.
-        let food_dist = if voronoi.my_food < i32::MAX { voronoi.my_food } else { closest_dist };
-        let buffer = me.health - food_dist;
-        let panic_value = if buffer > 0 {
-            scores.food.intensity * (scores.food.threshold / (buffer as f64 + 1.0)).powf(scores.food.exponent)
-        } else {
-            scores.food.intensity * 100.0
-        };
-        score -= (food_dist as f64 * panic_value) as i32;
-"""),
-]
-
-
-def apply_food_vor(path):
-    import os
-    vpath = os.path.join(os.path.dirname(path), "voronoi.rs")
-    for file, pairs in ((vpath, VF_VOR), (path, VF_HEUR)):
-        text = open(file).read()
-        for old, new in pairs:
-            if old not in text:
-                sys.exit(f"variant food_vor needs this text in {file}, which is not there:\n{old}")
-            text = text.replace(old, new, 1)
-        open(file, "w").write(text)
-
-
 def apply(path, variant):
-    if variant == "food_vor":
-        return apply_food_vor(path)
     text = open(path).read()
     if variant == "sym_all":
         text = apply_text(text, path, ["sym_len", "sym_trap", "sym_food"])
