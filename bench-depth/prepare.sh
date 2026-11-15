@@ -4,10 +4,9 @@
 #
 #   none         the engine as it is (it already has sym_tail, vor_len, vor_time, vor_eat and the head/tail Zobrist keys)
 #   no_hopeful   the hopeful-move step (prefer_hopeful_move) never changes the move
-#   sym_len, sym_trap, sym_food, sym_all, no_food
-#                eval variants (bench-depth/eval_variants.py explains each): the eval scores some terms from my side
-#                only, and each sym_* makes one of them symmetric (sym_all is the three together); no_food drops the
-#                food term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now.)
+#   sym_len, sym_trap, no_food, no_seal, no_seal_me, no_seal_enemy, no_starve
+#                eval variants (bench-depth/eval_variants.py explains each): two make a one-sided term symmetric, the
+#                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now.)
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine frees all of them)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
@@ -66,7 +65,7 @@ apply_variant() { # dir variant
     scale_*) # scale_<weight>_<percent>, e.g. scale_terr_70: that default weight at 70% of its value
       IFS=_ read -r _ w pct <<< "$2"
       python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "$w" "$pct" ;;
-    sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food|no_seal*|no_starve) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
 }

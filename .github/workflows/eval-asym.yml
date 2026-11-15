@@ -10,7 +10,7 @@ on:
     inputs:
       cand:
         description: "Variant under test (see bench-depth/prepare.sh), combinations with +"
-        default: "sym_all"
+        default: "sym_trap"
       base:
         description: "Reference variant"
         default: "none"
