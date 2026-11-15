@@ -1,12 +1,15 @@
 //! Plays two builds of the engine against each other: `base` and `cand`, which are the repo's `crates/` with the
 //! variants chosen in prepare.sh applied (by default `base` is unmodified and `cand` has late-move reductions off). Each seed is played twice with the sides swapped, and one `PAIR` line is printed per seed.
 //!
+//! Other modes: `harness asym` (eval symmetry, asym.rs) and `harness cost` (nodes and time per node of two builds on the same positions, cost.rs).
+//!
 //! harness match <seed0> <pairs> <w> <h> <max_turns> <engineA> <depthA> <engineB> <depthB> <max_secs>
 //! (a depth is a number, or `7~8` for a mix of two depths that keeps the side's total thinking time level with its opponent's)
 use std::time::Instant;
 
 #[cfg(not(no_asym))]
 mod asym;
+mod cost;
 // Older engines (rev_ variants) have a different eval signature, so the symmetry diagnostic is not built for them.
 #[cfg(no_asym)]
 mod asym {
@@ -47,6 +50,21 @@ macro_rules! engine {
 
             pub fn warm(w: i32, h: i32, depth: usize) {
                 warm_up_runtime(w, h, &cfg(depth));
+            }
+
+            /// Nodes the search needed for this position (the cost diagnostic, `harness cost`).
+            pub fn nodes(me: &[(i32, i32)], me_hp: i32, en: &[(i32, i32)], en_hp: i32, food: &[(i32, i32)], w: i32, h: i32, depth: usize) -> (u8, u64) {
+                let c = cfg(depth);
+                let m = AgentState { body: FastBody::from_points(points(me)), health: me_hp };
+                let e = AgentState { body: FastBody::from_points(points(en)), health: en_hp };
+                let d = decide_move(m, e, &points(food), w, h, &c);
+                let code = match d.best_move {
+                    Direction::Up => 0,
+                    Direction::Down => 1,
+                    Direction::Left => 2,
+                    Direction::Right => 3,
+                };
+                (code, d.search_nodes)
             }
 
             /// Returns the chosen direction (0 up, 1 down, 2 left, 3 right), the depth reached (0 if not reported) and whether
@@ -284,6 +302,9 @@ fn main() {
     let a: Vec<String> = std::env::args().collect();
     if a.get(1).map(String::as_str) == Some("asym") {
         return asym::run(&a);
+    }
+    if a.get(1).map(String::as_str) == Some("cost") {
+        return cost::run(&a);
     }
     if a.len() != 12 || a[1] != "match" {
         eprintln!("usage: harness match <seed0> <pairs> <w> <h>[p] <max_turns> <engineA> <depthA> <engineB> <depthB> <max_secs>");

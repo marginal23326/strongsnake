@@ -101,6 +101,10 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
     let mut my_release = Release::new(my_len, my_delay);
     let mut en_release = Release::new(en_len, en_delay);
 
+    // A snake whose front reaches food eats it and grows: its tail then stays one turn longer (the first food only).
+    let no_food = !grid.food.any();
+    let (mut my_ate, mut en_ate) = (no_food, no_food);
+
     let mut turn = 0usize;
     loop {
         turn += 1;
@@ -110,6 +114,18 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
         let en_raw = if en_any { ctx.expand_neighbors_unmasked(en_front) } else { BitBoard::<W, N>::empty() };
         my_adj |= my_raw;
         en_adj |= en_raw;
+
+        // Cells each front can claim this turn (a cell freed below is added through `my_free` / `en_free`).
+        let my_new = my_raw & unvisited;
+        let en_new = en_raw & unvisited;
+        if !my_ate && (my_new & grid.food).any() {
+            my_ate = true;
+            my_release.wait += 1;
+        }
+        if !en_ate && (en_new & grid.food).any() {
+            en_ate = true;
+            en_release.wait += 1;
+        }
 
         // Cells that open up this turn: a snake that already touches one can take it.
         let mut my_free = BitBoard::<W, N>::empty();
@@ -129,8 +145,8 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
             en_free = freed & en_adj;
         }
 
-        my_front = (my_raw & unvisited) | my_free;
-        en_front = (en_raw & unvisited) | en_free;
+        my_front = my_new | my_free;
+        en_front = en_new | en_free;
 
         // A contested cell goes to the longer snake, which survives the head-on and keeps expanding from it.
         // Equal lengths both die, so the cell stays nobody's.

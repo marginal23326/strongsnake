@@ -1,0 +1,55 @@
+# What does a variant cost per move: more search nodes, or more time per node? (bench-depth/harness/src/cost.rs)
+# Plays self-play games with the `base` build and asks both builds for a move at every turn, so both see the same
+# positions. Nodes are deterministic with one thread (the node ratio is exact); time per node is the eval and move
+# generation. It says nothing about strength; bench-depth.yml does that. Needs about 10 minutes.
+name: cost-diag
+
+on:
+  workflow_dispatch:
+    inputs:
+      cand:
+        description: "Variant under test (see bench-depth/prepare.sh), combinations with +; rev_<sha> works here too"
+        default: "none"
+      base:
+        description: "Reference variant"
+        default: "none"
+      depth:
+        description: "Search depth"
+        default: "6"
+      games:
+        description: "Self-play games per board"
+        default: "60"
+      max_turns:
+        description: "Turn cap of the self-play games"
+        default: "1500"
+
+jobs:
+  cost:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        board: ["11x11", "16x9"]
+    env:
+      CAND: ${{ inputs.cand }}
+      BASE: ${{ inputs.base }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # rev_<sha> variants read older commits
+      - name: Build
+        working-directory: bench-depth
+        run: |
+          rustup update stable --no-self-update
+          bash prepare.sh
+          cargo build --release --manifest-path harness/Cargo.toml
+      - name: Measure
+        working-directory: bench-depth
+        run: |
+          W="${{ matrix.board }}"; W="${W%x*}"; H="${{ matrix.board }}"; H="${H#*x}"
+          {
+            echo "### Cost: cand = $CAND, base = $BASE, board ${{ matrix.board }}"
+            echo
+            ./harness/target/release/harness cost 1 "${{ inputs.games }}" "$W" "$H" "${{ inputs.depth }}" "${{ inputs.max_turns }}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
