@@ -18,6 +18,8 @@
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
+#   small_tt, skip_iter, lmr_mild   search variants (bench-depth/search_variants.py explains each): a smaller transposition
+#                table (speed only), no iteration just before the last one, mild late-move reductions
 #   patch        bench-depth/candidate.patch applied (a diff against the repo root; the file is not shipped)
 #
 # Variants combine with `+`: `qext_5+no_hopeful` is the extension cap 5 with the hopeful-move step off.
@@ -70,6 +72,7 @@ apply_variant() { # dir variant
       IFS=_ read -r _ w pct <<< "$2"
       python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "$w" "$pct" ;;
     sym_*|no_food|no_seal*|no_starve) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
 }
