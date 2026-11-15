@@ -10,6 +10,8 @@
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine frees all of them)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
+#   dense_occ_<N>  the dense-race trigger (extension and verdict shrink) at N percent board occupancy instead of 40
+#   dense_min_<N>  the dense-race trigger needs both snakes at least N long instead of 20
 #   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
 #   scale_<weight>_<pct>  one default weight of AiConfig at <pct>% of its value (bench-depth/weight_variants.py): weights are
 #                length, eat, terr, fint, fthr, fexp (food curve), trap, etrap; e.g. scale_terr_140. Same depth, same cost.
@@ -61,6 +63,8 @@ apply_variant() { # dir variant
     no_qext) swap "$search" "if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" "if false && ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" ;;
     qext_*) swap_const "$search" QUIESCENCE_MAX_EXTENSIONS "${2#qext_}" ;;
     vor_time_*) swap_const "$d/crates/snake-ai/src/voronoi.rs" RELEASE_TURNS "${2#vor_time_}" ;;
+    dense_occ_*) swap "$d/crates/snake-ai/src/config.rs" "dense_tail_race_occupancy: 40," "dense_tail_race_occupancy: ${2#dense_occ_}," ;;
+    dense_min_*) swap_const "$d/crates/snake-ai/src/heuristics.rs" DENSE_MIN_LEN "${2#dense_min_}" ;;
     no_dense_shrink) swap "$d/crates/snake-ai/src/heuristics.rs" "const DENSE_VERDICT_DIVISOR: i32 = 1000;" "const DENSE_VERDICT_DIVISOR: i32 = 1;" ;;
     scale_*) # scale_<weight>_<percent>, e.g. scale_terr_70: that default weight at 70% of its value
       IFS=_ read -r _ w pct <<< "$2"
