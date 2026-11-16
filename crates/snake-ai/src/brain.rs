@@ -48,10 +48,10 @@ fn get_worker_pool() -> &'static Mutex<WorkerPool> {
 
 fn depth_based_tt_entries(turns: usize) -> usize {
     match turns {
-        0..=2 => 1 << 15,   // 32k entries (~2MB)
-        3..=4 => 1 << 17,   // 128k entries (~8MB)
-        5..=6 => 1 << 19,   // 512k entries (~32MB)
-        7..=10 => 1 << 21,  // 2M entries (~128MB)
+        0..=2 => 1 << 14,   // 16k entries (~1MB)
+        3..=4 => 1 << 15,   // 32k entries (~2MB)
+        5..=6 => 1 << 16,   // 64k entries (~4MB)
+        7..=10 => 1 << 18,  // 256k entries (~16MB)
         _ => 1 << 22,       // 4M entries (~256MB)
     }
 }
