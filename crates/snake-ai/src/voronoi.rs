@@ -28,8 +28,9 @@ pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_hea
     }
 }
 
-/// Turns of body release the Voronoi expansion models; later segments stay walls.
-const RELEASE_TURNS: usize = usize::MAX;
+/// Turns of body release the Voronoi expansion models; later segments stay walls. Releases far ahead are guesses the
+/// game rarely keeps (the bodies move on, food is eaten): at equal time 16 beat 12 (+3 Elo), 20 (+5) and 24 (+10).
+const RELEASE_TURNS: usize = 16;
 
 /// Walks one snake's body from the tail, a segment per turn: the segment k cells from the tail can be entered on turn
 /// k + 1 (one turn later for a snake that just ate and grows). The caller already cleared both tails for turn 1.

@@ -7,7 +7,7 @@
 #   sym_len, sym_trap, no_food, no_seal, no_seal_me, no_seal_enemy, no_starve
 #                eval variants (bench-depth/eval_variants.py explains each): two make a one-sided term symmetric, the
 #                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now.)
-#   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine frees all of them)
+#   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine uses 16)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
 #   dense_occ_<N>  the dense-race trigger (extension and verdict shrink) at N percent board occupancy instead of 40
