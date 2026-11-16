@@ -117,10 +117,6 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
             closest_dist = closest_dist.min(manhattan(my_head, cell));
         }
 
-        if closest_dist > me.health {
-            return scores.loss;
-        }
-
         let buffer = me.health - closest_dist;
         score -= (closest_dist as f64 * panic_value(&scores.food, buffer)) as i32;
     }

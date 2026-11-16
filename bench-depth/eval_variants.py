@@ -7,9 +7,7 @@ The eval in crates/snake-ai/src/heuristics.rs scores the position from "my" side
 below removes one of those asymmetries (or, for the control, the term itself), so the arena can say whether it matters:
 
   sym_len        length term is (my length - enemy length) instead of my length only (found: no gain).
-  no_food        control: the food term and its hard verdict are removed (found: -55 Elo).
-  no_starve      the hard verdict "nearest food is farther than my health = loss" is dropped (the food term stays; a
-                 snake with no health to spare still pays the full panic price).
+  no_food        control: the food term is removed (found: -55 Elo).
 
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
 import sys
@@ -28,19 +26,9 @@ FOOD_OLD = """    if grid.food.any() {
             closest_dist = closest_dist.min(manhattan(my_head, cell));
         }
 
-        if closest_dist > me.health {
-            return scores.loss;
-        }
-
         let buffer = me.health - closest_dist;
         score -= (closest_dist as f64 * panic_value(&scores.food, buffer)) as i32;
     }
-"""
-
-STARVE_OLD = """        if closest_dist > me.health {
-            return scores.loss;
-        }
-
 """
 
 def apply(path, variant):
@@ -54,8 +42,6 @@ def apply_text(text, path, variants):
             pairs = [(LEN_OLD, LEN_NEW)]
         elif v == "no_food":
             pairs = [(FOOD_OLD, "")]
-        elif v == "no_starve":
-            pairs = [(STARVE_OLD, "")]
         else:
             sys.exit(f"unknown eval variant: {v}")
         for old, new in pairs:

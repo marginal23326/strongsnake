@@ -4,7 +4,7 @@
 #
 #   none         the engine as it is (it already has sym_tail, vor_len, vor_time, vor_eat and the head/tail Zobrist keys)
 #   no_hopeful   the hopeful-move step (prefer_hopeful_move) never changes the move
-#   sym_len, no_food, no_starve
+#   sym_len, no_food
 #                eval variants (bench-depth/eval_variants.py explains each): two make a one-sided term symmetric, the
 #                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now, and the seal verdicts are gone.)
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine uses 16)
@@ -69,7 +69,7 @@ apply_variant() { # dir variant
     scale_*) # scale_<weight>_<percent>, e.g. scale_terr_70: that default weight at 70% of its value
       IFS=_ read -r _ w pct <<< "$2"
       python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "$w" "$pct" ;;
-    sym_*|no_food|no_starve) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
