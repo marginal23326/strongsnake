@@ -4,17 +4,16 @@
 #
 #   none         the engine as it is (it already has sym_tail, vor_len, vor_time, vor_eat and the head/tail Zobrist keys)
 #   no_hopeful   the hopeful-move step (prefer_hopeful_move) never changes the move
-#   sym_len, sym_trap, no_food, no_seal, no_seal_me, no_seal_enemy, no_starve
+#   sym_len, no_food, no_starve
 #                eval variants (bench-depth/eval_variants.py explains each): two make a one-sided term symmetric, the
-#                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now.)
+#                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now, and the seal verdicts are gone.)
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine uses 16)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
 #   dense_occ_<N>  the dense-race trigger (extension and verdict shrink) at N percent board occupancy instead of 40
 #   dense_min_<N>  the dense-race trigger needs both snakes at least N long instead of 20
-#   no_dense_shrink  trap verdicts keep their full size in a dense tail race (they are divided by 1000 today)
 #   scale_<weight>_<pct>  one default weight of AiConfig at <pct>% of its value (bench-depth/weight_variants.py): weights are
-#                length, eat, terr, fint, fthr, fexp (food curve), trap, etrap; e.g. scale_terr_140. Same depth, same cost.
+#                length, eat, terr, fint, fthr, fexp (food curve); e.g. scale_terr_140. Same depth, same cost.
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
@@ -67,11 +66,10 @@ apply_variant() { # dir variant
     vor_time_*) swap_const "$d/crates/snake-ai/src/voronoi.rs" RELEASE_TURNS "${2#vor_time_}" ;;
     dense_occ_*) swap "$d/crates/snake-ai/src/config.rs" "dense_tail_race_occupancy: 40," "dense_tail_race_occupancy: ${2#dense_occ_}," ;;
     dense_min_*) swap_const "$d/crates/snake-ai/src/heuristics.rs" DENSE_MIN_LEN "${2#dense_min_}" ;;
-    no_dense_shrink) swap "$d/crates/snake-ai/src/heuristics.rs" "const DENSE_VERDICT_DIVISOR: i32 = 1000;" "const DENSE_VERDICT_DIVISOR: i32 = 1;" ;;
     scale_*) # scale_<weight>_<percent>, e.g. scale_terr_70: that default weight at 70% of its value
       IFS=_ read -r _ w pct <<< "$2"
       python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "$w" "$pct" ;;
-    sym_*|no_food|no_seal*|no_starve) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food|no_starve) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac

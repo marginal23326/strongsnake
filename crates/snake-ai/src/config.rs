@@ -29,18 +29,13 @@ pub struct FoodCurveConfig {
     pub exponent: f64,
 }
 
-/// Evaluation scores. Outcomes and verdicts must stay ordered loss < trap_danger < draw < 0 < enemy_trapped < win,
-/// and far above the weights. The trainer tunes the weights; `territory_control` is the unit.
+/// Evaluation scores. Outcomes must stay ordered loss < draw < 0 < win, and far above the weights. The trainer tunes the weights; `territory_control` is the unit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreConfig {
     // Outcomes.
     pub win: i32,
     pub loss: i32,
     pub draw: i32,
-
-    // Verdicts.
-    pub trap_danger: i32,
-    pub enemy_trapped: i32,
 
     // Weights.
     pub length: i32,
@@ -71,8 +66,6 @@ impl Default for AiConfig {
                 win: 1_000_000_000,
                 loss: -1_000_000_000,
                 draw: -100_000_000,
-                trap_danger: -413_704_270,
-                enemy_trapped: 320_798_923,
                 length: 1_000,
                 eat_reward: 2_000,
                 territory_control: 3_265,

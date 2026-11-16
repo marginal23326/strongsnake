@@ -2,10 +2,9 @@ use std::cell::RefCell;
 
 use snake_domain::Point;
 
-use crate::{config::{AiConfig, FoodCurveConfig}, floodfill::flood_fill, grid::Grid, model::AgentState, voronoi::compute_voronoi};
+use crate::{config::{AiConfig, FoodCurveConfig}, grid::Grid, model::AgentState, voronoi::compute_voronoi};
 
-/// Trap verdicts shrink in a dense tail race, where "sealed" pockets often reopen.
-const DENSE_VERDICT_DIVISOR: i32 = 1000;
+/// Both snakes must be at least this long for a position to count as a dense tail race.
 const DENSE_MIN_LEN: usize = 20;
 
 #[inline(always)]
@@ -48,21 +47,10 @@ fn panic_value(food: &FoodCurveConfig, buffer: i32) -> f64 {
     })
 }
 
-/// A packed endgame: both snakes are long and together fill `dense_tail_race_occupancy` percent of the board.
+/// A packed endgame: both snakes are long and together fill `dense_tail_race_occupancy` percent of the board. The
+/// quiescence extension only runs in these positions.
 pub(crate) fn is_dense_tail_race(my_len: usize, enemy_len: usize, area: usize, cfg: &AiConfig) -> bool {
     my_len >= DENSE_MIN_LEN && enemy_len >= DENSE_MIN_LEN && (my_len + enemy_len) * 100 >= cfg.dense_tail_race_occupancy * area
-}
-
-/// Whether `snake` is sealed into a pocket it cannot get out of, given the rival's body.
-fn is_sealed_in<const W: usize, const N: usize>(grid: &Grid<W, N>, snake: &AgentState, rival: &AgentState) -> bool {
-    let head = snake.body.head();
-    let len = snake.body.len() as i32;
-
-    let fill = flood_fill(grid, head.x, head.y, len + 2, Some(&snake.body), Some(&rival.body));
-    let food_bonus = fill.has_food as i32;
-    let escape_turns = fill.min_turns_to_clear.saturating_add(food_bonus);
-
-    fill.count < len + food_bonus && fill.count < escape_turns
 }
 
 pub fn evaluate<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> i32
@@ -94,9 +82,6 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
         return scores.win;
     }
 
-    let area = (grid.width * grid.height) as usize;
-    let dense = is_dense_tail_race(me.body.len(), enemy.body.len(), area, cfg);
-    let scale_verdict = |verdict: i32| if dense { verdict / DENSE_VERDICT_DIVISOR } else { verdict };
     let unit = scores.territory_control;
 
     let my_head = me.body.head();
@@ -120,14 +105,6 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
     }
 
     score += (voronoi.my_count - voronoi.enemy_count) * unit;
-
-    let i_am_sealed = voronoi.my_count < me.body.len() as i32 && is_sealed_in(grid, me, enemy);
-    if i_am_sealed {
-        score += scale_verdict(scores.trap_danger);
-    } else if voronoi.enemy_count < enemy.body.len() as i32 && is_sealed_in(grid, enemy, me) {
-        // If I am sealed in, that already decided things.
-        score += scale_verdict(scores.enemy_trapped);
-    }
 
     if grid.food.any() {
         let mut closest_dist = i32::MAX;
