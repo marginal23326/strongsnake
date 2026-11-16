@@ -47,7 +47,6 @@ pub struct ScoreConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiConfig {
     pub max_depth: usize,
-    pub dense_tail_race_occupancy: usize,
     #[serde(default)]
     pub debug_logging: bool,
     #[serde(default)]
@@ -59,7 +58,6 @@ impl Default for AiConfig {
     fn default() -> Self {
         Self {
             max_depth: 8,
-            dense_tail_race_occupancy: 40,
             debug_logging: false,
             runtime: RuntimeConfig::default(),
             scores: ScoreConfig {

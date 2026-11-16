@@ -190,10 +190,9 @@ fn manhattan(a: Point, b: Point) -> i32 {
     (a.x - b.x).abs() + (a.y - b.y).abs()
 }
 
-fn should_extend_leaf<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> bool
+fn should_extend_leaf<const W: usize, const N: usize>(grid: &Grid<W, N>, me: &AgentState, enemy: &AgentState) -> bool
 {
-    let area = (grid.width * grid.height) as usize;
-    if !is_dense_tail_race(me.body.len(), enemy.body.len(), area, cfg) {
+    if !is_dense_tail_race(me.body.len(), enemy.body.len()) {
         return false;
     }
 
@@ -720,7 +719,7 @@ pub fn search<const W: usize, const N: usize>(
     }
 
     if depth == 0 {
-        if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS && should_extend_leaf(grid, me, enemy, ctx.cfg) {
+        if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS && should_extend_leaf(grid, me, enemy) {
             return search(
                 grid,
                 me,

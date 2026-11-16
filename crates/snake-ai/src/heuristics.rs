@@ -47,10 +47,10 @@ fn panic_value(food: &FoodCurveConfig, buffer: i32) -> f64 {
     })
 }
 
-/// A packed endgame: both snakes are long and together fill `dense_tail_race_occupancy` percent of the board. The
-/// quiescence extension only runs in these positions.
-pub(crate) fn is_dense_tail_race(my_len: usize, enemy_len: usize, area: usize, cfg: &AiConfig) -> bool {
-    my_len >= DENSE_MIN_LEN && enemy_len >= DENSE_MIN_LEN && (my_len + enemy_len) * 100 >= cfg.dense_tail_race_occupancy * area
+/// A long-snake endgame: both snakes are at least `DENSE_MIN_LEN` long. The quiescence extension only runs in these
+/// positions.
+pub(crate) fn is_dense_tail_race(my_len: usize, enemy_len: usize) -> bool {
+    my_len >= DENSE_MIN_LEN && enemy_len >= DENSE_MIN_LEN
 }
 
 pub fn evaluate<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &AgentState, enemy: &AgentState, cfg: &AiConfig) -> i32
