@@ -64,13 +64,13 @@ impl Default for AiConfig {
                 win: 1_000_000_000,
                 loss: -1_000_000_000,
                 draw: -100_000_000,
-                length: 1_000,
-                eat_reward: 2_000,
+                length: 1_903,
+                eat_reward: 6_436,
                 territory_control: 3_265,
                 food: FoodCurveConfig {
-                    intensity: 3_303.092,
-                    threshold: 19.357,
-                    exponent: 1.968,
+                    intensity: 2_553.9771,
+                    threshold: 36.657,
+                    exponent: 2.1932,
                 },
             },
         }

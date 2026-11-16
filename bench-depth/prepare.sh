@@ -18,8 +18,8 @@
 #   dense_min_<N>  the quiescence extension runs when both snakes are at least N long (the engine: 20)
 #   scale_<weight>_<pct>  one default weight of AiConfig at <pct>% of its value (bench-depth/weight_variants.py): weights are
 #                length, eat, terr, fint, fthr, fexp (food curve); e.g. scale_terr_140. Same depth, same cost.
-#   set_<weight>_<value>  one default weight set to that value (trainer results); trained_d5 / trained_d2 are the trainer's two
-#                depth-5 and depth-2 results, all five tuned weights at once. Same depth, same cost.
+#   set_<weight>_<value>  one default weight set to that value (trainer results). Same depth, same cost.
+#   old_weights  the weights from before the trainer's depth-5 result went in (length 1000, eat 2000, food 3303.092/19.357/1.968)
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
@@ -77,12 +77,8 @@ apply_variant() { # dir variant
     set_*) # set_<weight>_<value>, e.g. set_eat_6436: that default weight set to the value (a trainer result)
       IFS=_ read -r _ w val <<< "$2"
       python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "$w" "$val" set ;;
-    trained_d5) # the trainer's depth-5 result (validated +16 Elo at depth 5, 3000 pairs)
-      for kv in eat=6436 length=1903 fint=2553.9771 fthr=36.6570 fexp=2.1932; do
-        python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
-      done ;;
-    trained_d2) # the trainer's depth-2 result (validated +29 Elo at depth 2): expected to transfer badly to depth 6
-      for kv in eat=15990 length=612 fint=4559.5475 fthr=23.4440 fexp=6.6673; do
+    old_weights) # the defaults before the trainer's depth-5 result (validated +22 Elo at depth 6) became the defaults
+      for kv in eat=2000 length=1000 fint=3303.092 fthr=19.357 fexp=1.968; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
     vor_food_*|eat_urgency_*|eat_phase_*) python3 growth_variants.py "$d/crates/snake-ai/src" "$2" ;;
