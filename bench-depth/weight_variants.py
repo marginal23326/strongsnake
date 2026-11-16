@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """weight_variants.py <config.rs> <field> <percent>: scales one default weight of AiConfig to <percent>% of its value.
+weight_variants.py <config.rs> <field> <value> set: sets it to that value (a trainer result).
 
 Fields: length, eat (eat_reward), terr (territory_control), fint / fthr / fexp (the food curve's intensity, threshold,
 exponent). It rewrites the literal in `AiConfig::default()` and fails loudly
@@ -16,6 +17,7 @@ FIELDS = {  # name -> (regex of the line's left part, is_float)
 }
 
 path, field, pct = sys.argv[1], sys.argv[2], float(sys.argv[3])
+absolute = len(sys.argv) > 4 and sys.argv[4] == "set"
 if field not in FIELDS:
     sys.exit(f"unknown weight `{field}`; known: {', '.join(FIELDS)}")
 text = open(path).read()
@@ -26,8 +28,8 @@ m = re.search(rf"({left})(-?[0-9_]+(?:\.[0-9_]+)?)(,)", tail)
 if not m:
     sys.exit(f"weight `{field}` not found in AiConfig::default() of {path}")
 old = float(m.group(2).replace("_", ""))
-new = old * pct / 100.0
-lit = f"{new:.3f}" if is_float else str(int(round(new)))
+new = pct if absolute else old * pct / 100.0
+lit = f"{new:.4f}" if is_float else str(int(round(new)))
 tail = tail[: m.start(2)] + lit + tail[m.end(2):]
 open(path, "w").write(head + tail)
 print(f"{field}: {m.group(2)} -> {lit}")
