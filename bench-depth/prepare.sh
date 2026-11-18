@@ -15,7 +15,7 @@
 #   eat_phase_<occ>  the eat reward fades out as the board fills (full under <occ>/2 percent occupancy by both snakes, none from <occ>)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
-#   dense_min_<N>  the quiescence extension runs when both snakes are at least N long (the engine: 20)
+#   dense_min_<N>  the quiescence extension runs when both snakes are at least N long (the engine: 16)
 #   scale_<weight>_<pct>  one default weight of AiConfig at <pct>% of its value (bench-depth/weight_variants.py): weights are
 #                length, eat, terr, fint, fthr, fexp (food curve); e.g. scale_terr_140. Same depth, same cost.
 #   set_<weight>_<value>  one default weight set to that value (trainer results). Same depth, same cost.

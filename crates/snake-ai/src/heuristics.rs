@@ -5,7 +5,7 @@ use snake_domain::Point;
 use crate::{config::{AiConfig, FoodCurveConfig}, grid::Grid, model::AgentState, voronoi::compute_voronoi};
 
 /// Both snakes must be at least this long for a position to count as a dense tail race.
-const DENSE_MIN_LEN: usize = 20;
+const DENSE_MIN_LEN: usize = 16;
 
 #[inline(always)]
 fn manhattan(a: Point, b: Point) -> i32 {
