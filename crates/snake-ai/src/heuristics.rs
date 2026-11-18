@@ -117,6 +117,8 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
             closest_dist = closest_dist.min(manhattan(my_head, cell));
         }
 
+        // Path distance around bodies when the Voronoi flood found a food cell, else the straight-line guess.
+        let closest_dist = if voronoi.my_food_turn > 0 { voronoi.my_food_turn } else { closest_dist };
         let buffer = me.health - closest_dist;
         score -= (closest_dist as f64 * panic_value(&scores.food, buffer)) as i32;
     }

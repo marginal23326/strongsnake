@@ -7,6 +7,9 @@ use snake_domain::Point;
 pub struct VoronoiResult {
     pub my_count: i32,
     pub enemy_count: i32,
+    /// Turn on which each front first reaches a food cell (path distance around bodies), 0 if it never does.
+    pub my_food_turn: i32,
+    pub en_food_turn: i32,
 }
 
 pub fn compute_voronoi<const W: usize, const N: usize>(grid: &Grid<W, N>, my_head: Point, enemy_head: Point, my_len: usize, en_len: usize, me: &AgentState, enemy: &AgentState) -> VoronoiResult
@@ -105,6 +108,7 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
     // A snake whose front reaches food eats it and grows: its tail then stays one turn longer (the first food only).
     let no_food = !grid.food.any();
     let (mut my_ate, mut en_ate) = (no_food, no_food);
+    let (mut my_food_turn, mut en_food_turn) = (0i32, 0i32);
 
     let mut turn = 0usize;
     loop {
@@ -121,10 +125,12 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
         let en_new = en_raw & unvisited;
         if !my_ate && (my_new & grid.food).any() {
             my_ate = true;
+            my_food_turn = turn as i32;
             my_release.wait += 1;
         }
         if !en_ate && (en_new & grid.food).any() {
             en_ate = true;
+            en_food_turn = turn as i32;
             en_release.wait += 1;
         }
 
@@ -181,5 +187,7 @@ fn compute_voronoi_inner<const W: usize, const N: usize>(
     VoronoiResult {
         my_count: my_territory.count_ones() as i32,
         enemy_count: en_territory.count_ones() as i32,
+        my_food_turn,
+        en_food_turn,
     }
 }
