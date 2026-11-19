@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn recovers_most_of_the_gain_on_a_noisy_quadratic() {
-        let optimum = [0.4, -0.3, 0.0, 0.2, -0.5];
+        let optimum = [0.4, -0.3, 0.1, 0.0, 0.2, -0.5];
         let (start, best) = (surface_score(&[0.0; D], &optimum), surface_score(&optimum, &optimum));
         let recovered: Vec<f64> = (1..=8).map(|seed| (surface_score(&run(optimum, seed), &optimum) - start) / (best - start)).collect();
         let mean = recovered.iter().sum::<f64>() / recovered.len() as f64;

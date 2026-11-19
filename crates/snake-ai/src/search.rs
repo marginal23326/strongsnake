@@ -479,8 +479,10 @@ fn order_moves<const W: usize, const N: usize>(moves: &mut MoveList, grid: &Grid
     });
 }
 
-fn eat_bonus(my_ate: bool, en_ate: bool, cfg: &AiConfig) -> i32 {
-    (my_ate as i32 - en_ate as i32) * cfg.scores.eat_reward
+/// The eat reward, `depth` being the plies still to search below the move (the reward is larger the earlier the eat).
+fn eat_bonus(my_ate: bool, en_ate: bool, depth: usize, cfg: &AiConfig) -> i32 {
+    let reward = cfg.scores.eat_reward as i64 * (100 + cfg.scores.eat_urgency as i64 * depth as i64) / 100;
+    (my_ate as i32 - en_ate as i32) * reward as i32
 }
 
 fn is_decided(score: i32, cfg: &AiConfig) -> bool {
@@ -525,7 +527,7 @@ fn worst_case_reply<const W: usize, const N: usize>(
         let score = match outcome_score(outcome, query.node_depth, cfg) {
             Some(score) => score,
             None => {
-                let bonus = eat_bonus(my_ate, grid.food.get(grid.idx(reply.x, reply.y)), cfg);
+                let bonus = eat_bonus(my_ate, grid.food.get(grid.idx(reply.x, reply.y)), query.node_depth, cfg);
                 let (hash, undo) = make_turn(grid, me, enemy, query.my_mv, reply, ctx.zobrist, query.hash);
                 let child = search(
                     grid,
@@ -594,7 +596,7 @@ pub fn prefer_hopeful_move<const W: usize, const N: usize>(
             let (points, score) = match outcome_score(outcome, depth, cfg) {
                 Some(score) => (if outcome == TurnOutcome::Win { 2 } else if outcome == TurnOutcome::Draw { 1 } else { 0 }, score),
                 None => {
-                    let bonus = eat_bonus(my_ate, grid.food.get(grid.idx(reply.x, reply.y)), cfg);
+                    let bonus = eat_bonus(my_ate, grid.food.get(grid.idx(reply.x, reply.y)), depth, cfg);
                     let (hash, undo) = make_turn(grid, me, enemy, mv, reply, ctx.zobrist, root_hash);
                     let child = search(
                         grid,

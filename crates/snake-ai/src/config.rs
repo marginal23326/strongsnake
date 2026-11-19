@@ -40,6 +40,9 @@ pub struct ScoreConfig {
     // Weights.
     pub length: i32,
     pub eat_reward: i32,
+    /// An eat counts this many percent of `eat_reward` more for every ply the search still has to go below it, so eating now
+    /// beats eating later (without it, food nobody contests is put off for ever).
+    pub eat_urgency: i32,
     pub territory_control: i32,
     pub food: FoodCurveConfig,
 }
@@ -66,6 +69,7 @@ impl Default for AiConfig {
                 draw: -100_000_000,
                 length: 1_903,
                 eat_reward: 6_436,
+                eat_urgency: 50,
                 territory_control: 3_265,
                 food: FoodCurveConfig {
                     intensity: 2_553.9771,

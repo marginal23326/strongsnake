@@ -7,12 +7,13 @@ use snake_ai::AiConfig;
 enum Gene {
     Length,
     EatReward,
+    EatUrgency,
     FoodIntensity,
     FoodThreshold,
     FoodExponent,
 }
 
-const GENES: [Gene; 5] = [Gene::Length, Gene::EatReward, Gene::FoodIntensity, Gene::FoodThreshold, Gene::FoodExponent];
+const GENES: [Gene; 6] = [Gene::Length, Gene::EatReward, Gene::EatUrgency, Gene::FoodIntensity, Gene::FoodThreshold, Gene::FoodExponent];
 
 pub(super) const GENE_COUNT: usize = GENES.len();
 
@@ -28,6 +29,7 @@ impl Gene {
         match self {
             Self::Length => "length",
             Self::EatReward => "eat_reward",
+            Self::EatUrgency => "eat_urgency",
             Self::FoodIntensity => "food.intensity",
             Self::FoodThreshold => "food.threshold",
             Self::FoodExponent => "food.exponent",
@@ -38,6 +40,7 @@ impl Gene {
         match self {
             Self::Length => cfg.scores.length as f64,
             Self::EatReward => cfg.scores.eat_reward as f64,
+            Self::EatUrgency => cfg.scores.eat_urgency as f64,
             Self::FoodIntensity => cfg.scores.food.intensity,
             Self::FoodThreshold => cfg.scores.food.threshold,
             Self::FoodExponent => cfg.scores.food.exponent,
@@ -48,6 +51,7 @@ impl Gene {
         match self {
             Self::Length => cfg.scores.length = value.round() as i32,
             Self::EatReward => cfg.scores.eat_reward = value.round() as i32,
+            Self::EatUrgency => cfg.scores.eat_urgency = value.round() as i32,
             Self::FoodIntensity => cfg.scores.food.intensity = value,
             Self::FoodThreshold => cfg.scores.food.threshold = value,
             Self::FoodExponent => cfg.scores.food.exponent = value,

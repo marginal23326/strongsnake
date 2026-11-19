@@ -8,16 +8,11 @@
 #                eval variants (bench-depth/eval_variants.py explains each): two make a one-sided term symmetric, the
 #                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now, and the seal verdicts are gone.)
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine uses 16)
-#   vor_food_<pct>  food cells a Voronoi front claims add 1/turn cells' worth of territory (bench-depth/growth_variants.py): the engine
-#                values food it cannot reach inside its horizon, <pct>% of a cell for food one step away
-#   eat_urgency_<pct>  an eat is worth <pct>% of eat_reward more per ply still to search below it (eating now beats eating later;
-#                bench-depth/growth_variants.py)
-#   eat_phase_<occ>  the eat reward fades out as the board fills (full under <occ>/2 percent occupancy by both snakes, none from <occ>)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
 #   dense_min_<N>  the quiescence extension runs when both snakes are at least N long (the engine: 16)
 #   scale_<weight>_<pct>  one default weight of AiConfig at <pct>% of its value (bench-depth/weight_variants.py): weights are
-#                length, eat, terr, fint, fthr, fexp (food curve); e.g. scale_terr_140. Same depth, same cost.
+#                length, eat, urg (eat_urgency), terr, fint, fthr, fexp (food curve); e.g. scale_terr_140. Same depth, same cost.
 #   set_<weight>_<value>  one default weight set to that value (trainer results). Same depth, same cost.
 #   old_weights  the weights from before the trainer's depth-5 result went in (length 1000, eat 2000, food 3303.092/19.357/1.968)
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
@@ -81,7 +76,6 @@ apply_variant() { # dir variant
       for kv in eat=2000 length=1000 fint=3303.092 fthr=19.357 fexp=1.968; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
-    vor_food_*|eat_urgency_*|eat_phase_*) python3 growth_variants.py "$d/crates/snake-ai/src" "$2" ;;
     sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;

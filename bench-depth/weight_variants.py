@@ -2,7 +2,7 @@
 """weight_variants.py <config.rs> <field> <percent>: scales one default weight of AiConfig to <percent>% of its value.
 weight_variants.py <config.rs> <field> <value> set: sets it to that value (a trainer result).
 
-Fields: length, eat (eat_reward), terr (territory_control), fint / fthr / fexp (the food curve's intensity, threshold,
+Fields: length, eat (eat_reward), urg (eat_urgency), terr (territory_control), fint / fthr / fexp (the food curve's intensity, threshold,
 exponent). It rewrites the literal in `AiConfig::default()` and fails loudly
 if that literal is not there (the config moved on)."""
 import re, sys
@@ -10,6 +10,7 @@ import re, sys
 FIELDS = {  # name -> (regex of the line's left part, is_float)
     "length": (r"length: ", False),
     "eat": (r"eat_reward: ", False),
+    "urg": (r"eat_urgency: ", False),
     "terr": (r"territory_control: ", False),
     "fint": (r"intensity: ", True),
     "fthr": (r"threshold: ", True),
