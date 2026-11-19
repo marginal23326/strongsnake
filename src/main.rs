@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::{Result, bail};
-use clap::{ArgAction, Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use snake_ai::{AiConfig, RuntimeConfig};
 use snake_api::normalize_api_type;
 
@@ -22,7 +22,7 @@ use crate::{
     services::{
         ArenaOptions, RegressionOptions, RegressionOutput, TrainerOptions, default_scenario_dir, format_arena_progress_line,
         format_arena_summary_report, format_opponent_roster, parse_arena_find_modes, parse_boards, parse_depths,
-        run_arena_with_progress, run_regression_suite, run_trainer, run_trainer_worker,
+        run_arena_with_progress, run_regression_suite, run_trainer, run_trainer_eval, run_trainer_merge, run_trainer_worker,
     },
 };
 
@@ -200,6 +200,17 @@ impl ArenaCliArgs {
     }
 }
 
+/// What a `trainer` invocation does: a whole run, or one step of a run spread over machines (see .github/workflows/trainer.yml).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum TrainerStage {
+    /// The whole run in this process.
+    Run,
+    /// Plays one slice (`--shard` of `--shards`) of the next generation (or of the validation) and writes it to `--partial`.
+    Eval,
+    /// Adds up the slices in the `--partials` directory, advances the checkpoint, and after the last generation validates and saves.
+    Merge,
+}
+
 #[derive(Debug, Args)]
 struct TrainerCliArgs {
     #[arg(long, alias = "pop", default_value_t = TrainerOptions::DEFAULT_CANDIDATES, help = "Candidates per generation (rounded up to an odd number: the mean plus mirrored pairs)")]
@@ -234,6 +245,16 @@ struct TrainerCliArgs {
     resume: Option<PathBuf>,
     #[arg(long)]
     checkpoint: Option<PathBuf>,
+    #[arg(long, value_enum, default_value_t = TrainerStage::Run, help = "run: the whole run; eval / merge: one step of a run spread over machines (needs --checkpoint)")]
+    stage: TrainerStage,
+    #[arg(long, default_value_t = 0, help = "--stage eval: which slice of the games this machine plays")]
+    shard: usize,
+    #[arg(long, default_value_t = 1, help = "--stage eval: how many slices the games are split into")]
+    shards: usize,
+    #[arg(long, help = "--stage eval: where to write this slice's tallies")]
+    partial: Option<PathBuf>,
+    #[arg(long, help = "--stage merge: the directory holding every slice file")]
+    partials: Option<PathBuf>,
 }
 
 /// An `AiConfig` from a JSON file: either the config itself or a trainer result (its `bestConfig`).
@@ -386,9 +407,22 @@ fn main() -> Result<()> {
             let args = *args;
             let effective_depth = resolve_depth(cli.depth, args.depth);
             let rust_root = rust_root();
+            let (stage, shard, shards, partial, partials) = (args.stage, args.shard, args.shards, args.partial.clone(), args.partials.clone());
             let (cfg, options) = args.into_runtime(base_cfg, &rust_root, effective_depth)?;
-            let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
-            rt.block_on(run_trainer(cfg, options))?;
+            match stage {
+                TrainerStage::Run => {
+                    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+                    rt.block_on(run_trainer(cfg, options))?;
+                }
+                TrainerStage::Eval => {
+                    let Some(partial) = partial else { bail!("--stage eval needs --partial <file>") };
+                    run_trainer_eval(cfg, options, shard, shards, &partial)?;
+                }
+                TrainerStage::Merge => {
+                    let Some(partials) = partials else { bail!("--stage merge needs --partials <directory>") };
+                    run_trainer_merge(cfg, options, &partials)?;
+                }
+            }
         }
         Some(Command::TrainerWorker) => run_trainer_worker()?,
     }

@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// Running statistics over pair scores. A pair is the independent sample, so the error bars treat it as one.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub(super) struct Tally {
     pub n: usize,
     sum: f64,
@@ -22,6 +24,14 @@ impl Tally {
         self.sum += score;
         self.sum_sq += score * score;
         self.capped += capped;
+    }
+
+    /// Adds the pairs of another tally. Pair scores are multiples of 1/4, so the sums are exact and the order of merging cannot matter.
+    pub fn merge(&mut self, other: &Tally) {
+        self.n += other.n;
+        self.sum += other.sum;
+        self.sum_sq += other.sum_sq;
+        self.capped += other.capped;
     }
 
     /// Mean pair score; 0.5 when nothing was played.

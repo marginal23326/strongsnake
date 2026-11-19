@@ -14,5 +14,5 @@ pub use arena::{
 pub use common::{build_playground_state, format_opponent_roster};
 #[cfg_attr(not(feature = "gui"), allow(unused_imports))]
 pub use regression::{RegressionOptions, RegressionOutput, RegressionSummary, run_regression_suite};
-pub use trainer::{TrainerOptions, parse_boards, run_trainer, run_worker as run_trainer_worker};
+pub use trainer::{TrainerOptions, parse_boards, run_trainer, run_trainer_eval, run_trainer_merge, run_worker as run_trainer_worker};
 pub use util::{default_scenario_dir, parse_depths};

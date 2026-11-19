@@ -1,0 +1,186 @@
+# The weight trainer (src/services/trainer) spread over 20 runners. One run of this workflow is ONE generation: every runner
+# plays a slice of that generation's games (`trainer --stage eval`), the last job adds the slices up, moves the mean and
+# uploads the checkpoint (`--stage merge`), then starts the next run of this workflow. After the last generation one more run
+# plays the validation pairs the same way and uploads the result. So `gens` generations take `gens + 1` runs. The numbers are
+# the same as `trainer` on one machine would give with the same settings (games are a pure function of their seed).
+#
+# Start it from the Actions tab and leave `state_run` and `bin_run` empty; the chain fills them in. The binary is built by the
+# first run only and every later run reuses it, so pushing commits in the middle of a chain does not change what it trains.
+#   The weights it starts from (and the fixed opponent it plays) are the engine's defaults, as built by the first run.
+#   Result: the `trainer-result` artifact of the last run (the same JSON as `trainer --save`), and its job summary.
+#   A failed job: use "Re-run failed jobs" on that run; the chain only goes on from a successful merge job.
+#   A cancelled or broken chain: start the workflow again with `state_run` = the run id of the last run whose merge job
+#   succeeded and `bin_run` = the run id of the first run (both are in the URL of the run page).
+name: trainer
+
+on:
+  workflow_dispatch:
+    inputs:
+      depth:
+        description: "Search depth of both sides"
+        default: "6"
+      gens:
+        description: "Generations"
+        default: "70"
+      pairs:
+        description: "Pairs (one seed, both sides) each candidate plays per generation"
+        default: "96"
+      candidates:
+        description: "Candidates per generation (rounded up to odd)"
+        default: "17"
+      validation_pairs:
+        description: "Fresh pairs the final answer is judged on"
+        default: "3000"
+      boards:
+        description: "Comma-separated boards the pairs cycle through"
+        default: "11x11,16x9"
+      max_turns:
+        description: "Turn cap"
+        default: "1500"
+      sigma:
+        description: "First step size (relative weight change, log scale)"
+        default: "0.3"
+      sigma_end:
+        description: "Step size of the last generation"
+        default: "0.08"
+      seed:
+        description: "Seed of the whole run"
+        default: "42"
+      state_run:
+        description: "Leave empty. The run whose checkpoint this run continues (set by the chain)"
+        default: ""
+      bin_run:
+        description: "Leave empty. The run that built the binary (set by the chain)"
+        default: ""
+
+env:
+  DEPTH: ${{ inputs.depth }}
+  GENS: ${{ inputs.gens }}
+  PAIRS: ${{ inputs.pairs }}
+  CANDIDATES: ${{ inputs.candidates }}
+  VALIDATION_PAIRS: ${{ inputs.validation_pairs }}
+  BOARDS: ${{ inputs.boards }}
+  MAX_TURNS: ${{ inputs.max_turns }}
+  SIGMA: ${{ inputs.sigma }}
+  SIGMA_END: ${{ inputs.sigma_end }}
+  SEED: ${{ inputs.seed }}
+  BIN_RUN: ${{ inputs.bin_run || github.run_id }}
+  STATE_RUN: ${{ inputs.state_run }}
+
+jobs:
+  build:
+    if: ${{ inputs.bin_run == '' }}
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        # .cargo/config.toml builds for the CPU it runs on (target-cpu=native). This binary runs on other runners, whose CPUs
+        # can lack instructions this one has (AVX-512: "Illegal instruction"), so build for the common x86-64-v3 instead
+        # (RUSTFLAGS overrides the config). Only speed depends on it, never the games.
+        env:
+          RUSTFLAGS: -C target-cpu=x86-64-v3
+        run: |
+          rustup update stable --no-self-update
+          cargo build --release
+      - uses: actions/upload-artifact@v7
+        with:
+          name: trainer-bin
+          path: target/release/snake-app
+          retention-days: 30
+
+  shard:
+    needs: build
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: trainer-bin
+          path: bin
+          run-id: ${{ env.BIN_RUN }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v8
+        if: ${{ env.STATE_RUN != '' }}
+        with:
+          name: trainer-state
+          path: state
+          run-id: ${{ env.STATE_RUN }}
+          github-token: ${{ github.token }}
+      - name: Play this runner's slice
+        shell: bash
+        run: |
+          chmod +x bin/snake-app
+          bin/snake-app trainer --stage eval --shard ${{ matrix.shard }} --shards 20 \
+            --depth "$DEPTH" --gens "$GENS" --pairs "$PAIRS" --candidates "$CANDIDATES" --validation-pairs "$VALIDATION_PAIRS" \
+            --boards "$BOARDS" --max-turns "$MAX_TURNS" --sigma "$SIGMA" --sigma-end "$SIGMA_END" --seed "$SEED" \
+            --checkpoint state/ck.json --partial out/part-${{ matrix.shard }}.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: part-${{ matrix.shard }}
+          path: out/part-${{ matrix.shard }}.json
+          overwrite: true
+          retention-days: 7
+
+  merge:
+    needs: shard
+    # Without this, a skipped `build` (every run but the first) would skip this job too: GitHub skips a job whose needs chain
+    # contains a skipped job, unless its own `if` says otherwise.
+    if: ${{ !cancelled() && needs.shard.result == 'success' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: write # starts the next run
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: trainer-bin
+          path: bin
+          run-id: ${{ env.BIN_RUN }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v8
+        if: ${{ env.STATE_RUN != '' }}
+        with:
+          name: trainer-state
+          path: state
+          run-id: ${{ env.STATE_RUN }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: part-*
+          path: partials
+          merge-multiple: true
+      - name: Add up the slices
+        id: merge
+        shell: bash
+        run: |
+          chmod +x bin/snake-app
+          bin/snake-app trainer --stage merge --partials partials \
+            --depth "$DEPTH" --gens "$GENS" --pairs "$PAIRS" --candidates "$CANDIDATES" --validation-pairs "$VALIDATION_PAIRS" \
+            --boards "$BOARDS" --max-turns "$MAX_TURNS" --sigma "$SIGMA" --sigma-end "$SIGMA_END" --seed "$SEED" \
+            --checkpoint state/ck.json --save result.json | tee merge.log
+          echo "status=$(grep '^STATUS ' merge.log | tail -1 | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+          { echo '```'; grep -v '^STATUS ' merge.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: trainer-state
+          path: state/ck.json
+          overwrite: true
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.merge.outputs.status == 'done' }}
+        with:
+          name: trainer-result
+          path: result.json
+      - name: Start the next run
+        if: ${{ steps.merge.outputs.status == 'continue' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh workflow run trainer.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"
+          -f depth="$DEPTH" -f gens="$GENS" -f pairs="$PAIRS" -f candidates="$CANDIDATES" -f validation_pairs="$VALIDATION_PAIRS"
+          -f boards="$BOARDS" -f max_turns="$MAX_TURNS" -f sigma="$SIGMA" -f sigma_end="$SIGMA_END" -f seed="$SEED"
+          -f state_run="${{ github.run_id }}" -f bin_run="$BIN_RUN"

@@ -8,7 +8,7 @@
 //!   score(u) = b0 + b.u + sum q_ii u_i^2 + sum_{i<j} q_ij u_i u_j,    u = (offset - mean) / scale
 //!
 //! Observations are weighted by their precision (pairs / pair variance) and by a Gaussian kernel around the mean, so the
-//! model stays local; a ridge prior keeps the 21 coefficients from chasing noise.
+//! model stays local; a ridge prior keeps the coefficients from chasing noise.
 
 use serde::{Deserialize, Serialize};
 
