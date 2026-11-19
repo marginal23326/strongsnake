@@ -236,7 +236,7 @@ def main():
     p.add_argument("--shard", type=int, default=0)
     p.add_argument("--workers", type=int, default=3)
     p.add_argument("--depth", type=int, default=8)
-    p.add_argument("--depth-cand", default=None, help="depth of side A when it should differ: 7, or 7~8 for a time-matched mix of 7 and 8")
+    p.add_argument("--depth-cand", default=None, help="depth of side A when it should differ: 7, or 7~8 for a time-matched mix of 7 and 8 (a random share of the moves at 8, set from the measured average times)")
     p.add_argument("--boards", default="11x11,16x9")
     p.add_argument("--minutes", type=int, default=240, help="stop starting new pairs after this long")
     p.add_argument("--max-pairs", type=int, default=50000)

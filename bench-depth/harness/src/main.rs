@@ -4,7 +4,8 @@
 //! Other modes: `harness asym` (eval symmetry, asym.rs) and `harness cost` (nodes and time per node of two builds on the same positions, cost.rs).
 //!
 //! harness match <seed0> <pairs> <w> <h> <max_turns> <engineA> <depthA> <engineB> <depthB> <max_secs>
-//! (a depth is a number, or `7~8` for a mix of two depths that keeps the side's total thinking time level with its opponent's)
+//! (a depth is a number, or `7~8` for a time-matched mix: each move is searched at 8 with a probability that makes the side's average
+//! time per move equal its opponent's; the draw does not look at the position, see `Clock`)
 use std::time::Instant;
 
 #[cfg(not(no_asym))]
@@ -92,13 +93,67 @@ macro_rules! engine {
 engine!(base, snake_ai_base, snake_domain, none);
 engine!(cand, snake_ai_cand, snake_domain_cand, none);
 
-/// A fixed depth (`8`) or a time-matched mix of two depths (`7~8`): the engine searches `hi` whenever its thinking time so
-/// far (summed over the whole run of this worker) is at or below its opponent's, and `lo` otherwise, so both sides end up
-/// spending the same total time even though depths are whole numbers.
+/// A fixed depth (`8`) or a time-matched mix of two depths (`7~8`): the engine searches `hi` on a share of its moves and `lo` on
+/// the rest, so that its average time per move equals its opponent's even though depths are whole numbers. The share is set
+/// from the average times measured so far; WHICH moves get `hi` is a random draw that does not look at the position or at
+/// the clocks. (An earlier rule, `hi` whenever the side's total time was at or below its opponent's, let the side that moves
+/// second in a turn see how long the first one just thought and spend `hi` on exactly the expensive positions, which is worth
+/// about +4 Elo even for two identical engines.)
 #[derive(Clone, Copy)]
 struct DepthSpec {
     lo: usize,
     hi: usize,
+}
+
+/// Thinking time per side (0 = A, 1 = B) and depth class (0 = lo, 1 = hi) so far, and the share of moves each side searches at `hi`.
+#[derive(Clone)]
+struct Clock {
+    time: [[f64; 2]; 2],
+    moves: [[u64; 2]; 2],
+    hi_share: [f64; 2],
+    rng: u64,
+}
+
+impl Clock {
+    fn new() -> Self {
+        Clock { time: [[0.0; 2]; 2], moves: [[0; 2]; 2], hi_share: [0.5; 2], rng: 0x9E37_79B9_7F4A_7C15 }
+    }
+
+    /// True when this move of `side` is to be searched at its `hi` depth (xorshift64*, independent of the position).
+    fn draw_hi(&mut self, side: usize) -> bool {
+        let mut x = self.rng;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.rng = x;
+        ((x.wrapping_mul(0x2545_F491_4F6C_DD1D) >> 11) as f64 / (1u64 << 53) as f64) < self.hi_share[side]
+    }
+
+    fn record(&mut self, side: usize, hi: bool, secs: f64) {
+        self.time[side][hi as usize] += secs;
+        self.moves[side][hi as usize] += 1;
+    }
+
+    fn mean(&self, side: usize, class: usize) -> Option<f64> {
+        (self.moves[side][class] >= 30).then(|| self.time[side][class] / self.moves[side][class] as f64)
+    }
+
+    fn mean_all(&self, side: usize) -> Option<f64> {
+        let n = self.moves[side][0] + self.moves[side][1];
+        (n >= 60).then(|| (self.time[side][0] + self.time[side][1]) / n as f64)
+    }
+
+    /// Between pairs: each side's `hi` share makes its average time per move equal to its opponent's
+    /// (share = (target - mean lo) / (mean hi - mean lo), clamped to 0..=1; 0.5 until there are enough moves to know).
+    fn retune(&mut self) {
+        for side in 0..2 {
+            if let (Some(lo), Some(hi), Some(target)) = (self.mean(side, 0), self.mean(side, 1), self.mean_all(1 - side)) {
+                if hi > lo {
+                    self.hi_share[side] = ((target - lo) / (hi - lo)).clamp(0.0, 1.0);
+                }
+            }
+        }
+    }
 }
 
 fn parse_depth(s: &str) -> DepthSpec {
@@ -201,7 +256,7 @@ fn death_code(reason: &str) -> char {
 
 /// Plays one game; `who[i]` is the engine and depth controlling snake `i`. Returns the winning snake, if any.
 fn play(
-    seed: u32, w: i32, h: i32, start: Start, who: [(Eng, DepthSpec, usize); 2], max_turns: u32, stats: &mut [Side; 2], clock: &mut [f64; 2],
+    seed: u32, w: i32, h: i32, start: Start, who: [(Eng, DepthSpec, usize); 2], max_turns: u32, stats: &mut [Side; 2], clock: &mut Clock,
 ) -> (Option<usize>, u32, Ending) {
     let (state, rng) = init_state(w, h, start, seed);
     let mut snaps: [Option<(GameState, LcgRng)>; 2] = [None, None];
@@ -210,7 +265,7 @@ fn play(
     for i in 0..2 {
         if let Some((state, rng)) = snaps[i].take() {
             let no_food = SimConfig { food: FoodSettings { minimum_food: 0, food_spawn_chance: 0, ..FoodSettings::default() }, ..SimConfig::default() };
-            let (mut scratch, mut c2) = ([Side::default(), Side::default()], *clock);
+            let (mut scratch, mut c2) = ([Side::default(), Side::default()], clock.clone());
             let (res, ..) = run(state, rng, who, max_turns, &mut scratch, &mut c2, no_food, None);
             ending.no_spawn[i] = match res {
                 Some(x) if x == i => 'W',
@@ -225,7 +280,7 @@ fn play(
 /// Plays a game from `state` to its end. With `snaps`, saves the state at each snake's first proven win.
 #[allow(clippy::too_many_arguments)]
 fn run(
-    mut state: GameState, mut rng: LcgRng, who: [(Eng, DepthSpec, usize); 2], max_turns: u32, stats: &mut [Side; 2], clock: &mut [f64; 2], sim: SimConfig,
+    mut state: GameState, mut rng: LcgRng, who: [(Eng, DepthSpec, usize); 2], max_turns: u32, stats: &mut [Side; 2], clock: &mut Clock, sim: SimConfig,
     mut snaps: Option<&mut [Option<(GameState, LcgRng)>; 2]>,
 ) -> (Option<usize>, u32, Ending) {
     let w = state.board.width;
@@ -242,14 +297,15 @@ fn run(
         let mut intents = [Direction::Up; 2];
         for i in 0..2 {
             let (eng, spec, side) = who[i];
-            let depth = if spec.lo != spec.hi && clock[side] > clock[1 - side] { spec.lo } else { spec.hi };
+            let hi = spec.lo == spec.hi || clock.draw_hi(side);
+            let depth = if hi { spec.hi } else { spec.lo };
             let t = Instant::now();
             let (code, reached, class, gap) = match eng {
                 Eng::Base => base::decide(&bodies[i], hp[i], &bodies[1 - i], hp[1 - i], &food, w, h, depth),
                 Eng::Cand => cand::decide(&bodies[i], hp[i], &bodies[1 - i], hp[1 - i], &food, w, h, depth),
             };
             let el = t.elapsed().as_secs_f64();
-            clock[side] += el;
+            clock.record(side, hi, el);
             if class != 0 {
                 if class > 0 { ending.wins[i] += 1 } else { ending.losses[i] += 1 }
                 if ending.first[i] == '-' {
@@ -327,7 +383,7 @@ fn main() {
     let max_secs: f64 = a[11].parse().unwrap();
     base::warm(w, h, da.hi.max(db.hi));
     cand::warm(w, h, da.hi.max(db.hi));
-    let mut clock = [0.0f64; 2]; // thinking time so far of A and B, for the time-matched depth mix
+    let mut clock = Clock::new(); // thinking times of A and B, for the time-matched depth mix
 
     let started = Instant::now();
     for i in 0..pairs {
@@ -335,6 +391,7 @@ fn main() {
         if started.elapsed().as_secs_f64() > max_secs {
             break;
         }
+        clock.retune();
         let seed = seed0 + i;
         let mut stats = [Side::default(), Side::default()]; // [A, B]
         let mut score_a = [0.0f64; 2];
