@@ -8,12 +8,23 @@ below removes one of those asymmetries (or, for the control, the term itself), s
 
   sym_len        length term is (my length - enemy length) instead of my length only (found: no gain).
   no_food        control: the food term is removed (found: -55 Elo).
+  no_food_dist   undo "food distance": the food term uses the straight-line distance to the nearest food again, not the
+                 path distance the Voronoi flood found around bodies.
+  no_food_terr   undo "food in territory": the territory term no longer counts food cells each snake reaches first.
+  food_terr_<P>  the food-in-territory term at P percent of its engine weight (one territory cell per food cell is 100):
+                 food_terr_200 is two cells, food_terr_50 half a cell. Needs the term to be in the engine.
 
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
 import sys
 
 LEN_OLD = "    let mut score = me.body.len() as i32 * scores.length;\n"
 LEN_NEW = "    let mut score = (me.body.len() as i32 - enemy.body.len() as i32) * scores.length;\n"
+
+DIST_OLD = """        // Path distance around bodies when the Voronoi flood found a food cell, else the straight-line guess.
+        let closest_dist = if voronoi.my_food_turn > 0 { voronoi.my_food_turn } else { closest_dist };
+"""
+
+TERR_OLD = "    score += (voronoi.my_food - voronoi.enemy_food) * unit;\n"
 
 FOOD_OLD = """    if grid.food.any() {
         let mut closest_dist = i32::MAX;
@@ -42,6 +53,13 @@ def apply_text(text, path, variants):
             pairs = [(LEN_OLD, LEN_NEW)]
         elif v == "no_food":
             pairs = [(FOOD_OLD, "")]
+        elif v == "no_food_dist":
+            pairs = [(DIST_OLD, "")]
+        elif v == "no_food_terr":
+            pairs = [(TERR_OLD, "")]
+        elif v.startswith("food_terr_") and v[len("food_terr_"):].isdigit():
+            pct = int(v[len("food_terr_"):])
+            pairs = [(TERR_OLD, f"    score += (voronoi.my_food - voronoi.enemy_food) * unit * {pct} / 100;\n")]
         else:
             sys.exit(f"unknown eval variant: {v}")
         for old, new in pairs:

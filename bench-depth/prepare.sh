@@ -4,9 +4,11 @@
 #
 #   none         the engine as it is (it already has sym_tail, vor_len, vor_time, vor_eat and the head/tail Zobrist keys)
 #   no_hopeful   the hopeful-move step (prefer_hopeful_move) never changes the move
-#   sym_len, no_food
+#   sym_len, no_food, no_food_dist, no_food_terr, food_terr_<P>
 #                eval variants (bench-depth/eval_variants.py explains each): two make a one-sided term symmetric, the
 #                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now, and the seal verdicts are gone.)
+#                no_food_dist / no_food_terr undo the food-distance and food-in-territory changes; food_terr_<P> sets the
+#                food-in-territory weight to P percent of a territory cell per food cell (100 = the engine's)
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine uses 16)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
@@ -76,7 +78,7 @@ apply_variant() { # dir variant
       for kv in eat=2000 length=1000 fint=3303.092 fthr=19.357 fexp=1.968; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
-    sym_*|no_food) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food|no_food_dist|no_food_terr|food_terr_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
