@@ -17,6 +17,8 @@
 #                length, eat, urg (eat_urgency), terr, fint, fthr, fexp (food curve); e.g. scale_terr_140. Same depth, same cost.
 #   set_<weight>_<value>  one default weight set to that value (trainer results). Same depth, same cost.
 #   old_weights  the weights from before the trainer's depth-5 result went in (length 1000, eat 2000, food 3303.092/19.357/1.968)
+#   trained_v2   the trainer's second result, all six tuned weights at once (validated +24.5 Elo, 3000 pairs): length 826, eat 14193,
+#                urgency 32, food 5370.1582/46.6120/0.4783. A flat, always-on pull toward food instead of a hunger spike. Same cost.
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
@@ -76,6 +78,10 @@ apply_variant() { # dir variant
       python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "$w" "$val" set ;;
     old_weights) # the defaults before the trainer's depth-5 result (validated +22 Elo at depth 6) became the defaults
       for kv in eat=2000 length=1000 fint=3303.092 fthr=19.357 fexp=1.968; do
+        python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
+      done ;;
+    trained_v2)
+      for kv in eat=14193 length=826 urg=32 fint=5370.1582 fthr=46.6120 fexp=0.4783; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
     sym_*|no_food|no_food_dist|no_food_terr|food_terr_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
