@@ -9,7 +9,7 @@ use crate::{
     floodfill::flood_fill,
     grid::Grid,
     model::AgentState,
-    search::{RootChildRecord, RootSearch, SearchContext, prefer_hopeful_move, reconstruct_pv, search_root},
+    search::{RootChildRecord, RootSearch, SearchContext, equilibrium_move, prefer_hopeful_move, reconstruct_pv, search_root},
     tt::TranspositionTable,
     zobrist::Zobrist,
 };
@@ -270,6 +270,10 @@ fn execute_search_task<const W: usize, const N: usize>(
             &root.result,
             &mut search_ctx,
         )
+    {
+        root.result.mv = Some(mv);
+    } else if thread_id == 0
+        && let Some(mv) = equilibrium_move(&mut task.grid, &mut task.me, &mut task.enemy, task.initial_hash, &root.result, &mut search_ctx)
     {
         root.result.mv = Some(mv);
     }

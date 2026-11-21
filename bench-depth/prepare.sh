@@ -19,6 +19,9 @@
 #   old_weights  the weights from before the trainer's depth-5 result went in (length 1000, eat 2000, food 3303.092/19.357/1.968)
 #   prev_weights  the weights before the trainer's second result became the defaults (length 1903, eat 6436, urgency 50,
 #                food 2553.9771/36.657/2.1932). Same cost.
+#   root_mixed_<1|2>  the root move comes from the equilibrium of the simultaneous-move game at the root (1: a draw from the mix, 2: the
+#                mix's most likely move) when the heads can meet and the game has no saddle point; else the max-min move. Costs ~12%
+#                more time (the extra matrix of searches), so run it with depth_cand 5~6.
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
@@ -68,6 +71,7 @@ apply_variant() { # dir variant
       git -C .. archive "${2#rev_}" crates/snake-domain crates/snake-ai | tar -x -m -C "$d" ;; # -m: fresh mtimes, git archive stamps the commit time and cargo would reuse a stale build
     no_qext) swap "$search" "if ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" "if false && ctx.root_depth >= 2 && q_depth < QUIESCENCE_MAX_EXTENSIONS &&" ;;
     qext_*) swap_const "$search" QUIESCENCE_MAX_EXTENSIONS "${2#qext_}" ;;
+    root_mixed_*) swap_const "$search" ROOT_MIXED "${2#root_mixed_}" ;;
     vor_time_*) swap_const "$d/crates/snake-ai/src/voronoi.rs" RELEASE_TURNS "${2#vor_time_}" ;;
     dense_min_*) swap_const "$d/crates/snake-ai/src/heuristics.rs" DENSE_MIN_LEN "${2#dense_min_}" ;;
     scale_*) # scale_<weight>_<percent>, e.g. scale_terr_70: that default weight at 70% of its value

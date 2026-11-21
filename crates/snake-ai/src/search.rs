@@ -632,6 +632,194 @@ pub fn prefer_hopeful_move<const W: usize, const N: usize>(
     Some(best.0)
 }
 
+/// How the root move is chosen. 0: the max-min move (the search assumes the enemy sees my move before it replies, which is
+/// pessimistic where the two heads can collide). 1: a move drawn from the equilibrium mix of the simultaneous-move game at the
+/// root, when that game has no saddle point (so a mix is worth more than any single move). 2: the most likely move of that mix.
+pub const ROOT_MIXED: usize = 0;
+/// Score units per logit when a score is turned into a utility for the root game (calibrated on self-play: about 2e5).
+const MIX_SCALE: f64 = 200_000.0;
+
+fn utility(score: i32) -> f64 {
+    1.0 / (1.0 + (-(score as f64) / MIX_SCALE).exp())
+}
+
+/// Solves `a z = b` (square, small) by Gaussian elimination with partial pivoting; None if singular.
+fn solve_linear(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
+    let n = b.len();
+    for col in 0..n {
+        let pivot = (col..n).max_by(|&i, &j| a[i][col].abs().total_cmp(&a[j][col].abs()))?;
+        if a[pivot][col].abs() < 1e-12 {
+            return None;
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        for row in col + 1..n {
+            let f = a[row][col] / a[col][col];
+            for k in col..n {
+                a[row][k] -= f * a[col][k];
+            }
+            b[row] -= f * b[col];
+        }
+    }
+    let mut z = vec![0.0; n];
+    for row in (0..n).rev() {
+        let tail: f64 = (row + 1..n).map(|k| a[row][k] * z[k]).sum();
+        z[row] = (b[row] - tail) / a[row][row];
+    }
+    Some(z)
+}
+
+/// The mix over a player's `support` that makes every column (or row) of the opposite support pay the same value:
+/// `lines[j][i]` is what the opposite line `j` pays against own option `i`. Returns (mix over the support, value).
+fn equalizing_mix(lines: &[Vec<f64>]) -> Option<(Vec<f64>, f64)> {
+    let k = lines.len();
+    let mut a = vec![vec![0.0; k + 1]; k + 1];
+    let mut b = vec![0.0; k + 1];
+    for j in 0..k {
+        for i in 0..k {
+            a[j][i] = lines[j][i];
+        }
+        a[j][k] = -1.0;
+    }
+    for i in 0..k {
+        a[k][i] = 1.0;
+    }
+    b[k] = 1.0;
+    let z = solve_linear(a, b)?;
+    Some((z[..k].to_vec(), z[k]))
+}
+
+/// Equilibrium of the zero-sum game `p[row][col]` (the row player maximizes) by support enumeration, smallest supports first
+/// (so a saddle point is found as a pure pair). Returns the row player's mix and the game value.
+fn solve_matrix_game(p: &[Vec<f64>]) -> Option<(Vec<f64>, f64)> {
+    let (n, m) = (p.len(), p[0].len());
+    let eps = 1e-9;
+    let subsets = |len: usize, k: usize| -> Vec<Vec<usize>> { (1u32..1 << len).filter(|s| s.count_ones() as usize == k).map(|s| (0..len).filter(|&i| s >> i & 1 == 1).collect()).collect() };
+    for k in 1..=n.min(m) {
+        for rows in subsets(n, k) {
+            for cols in subsets(m, k) {
+                // Row mix x over `rows`: every column in `cols` pays v; no other column pays the row player less.
+                let lines: Vec<Vec<f64>> = cols.iter().map(|&j| rows.iter().map(|&i| p[i][j]).collect()).collect();
+                let Some((x, v)) = equalizing_mix(&lines) else { continue };
+                if x.iter().any(|&w| w < -eps) {
+                    continue;
+                }
+                let pays = |j: usize| rows.iter().zip(&x).map(|(&i, &w)| w * p[i][j]).sum::<f64>();
+                if (0..m).filter(|j| !cols.contains(j)).any(|j| pays(j) < v - eps) {
+                    continue;
+                }
+                // Column mix y over `cols`: every row in `rows` pays w; no other row pays more.
+                let lines: Vec<Vec<f64>> = rows.iter().map(|&i| cols.iter().map(|&j| -p[i][j]).collect()).collect();
+                let Some((y, neg_w)) = equalizing_mix(&lines) else { continue };
+                let w = -neg_w;
+                if y.iter().any(|&q| q < -eps) {
+                    continue;
+                }
+                let pays_row = |i: usize| cols.iter().zip(&y).map(|(&j, &q)| q * p[i][j]).sum::<f64>();
+                if (0..n).filter(|i| !rows.contains(i)).any(|i| pays_row(i) > w + eps) {
+                    continue;
+                }
+                let mut mix = vec![0.0; n];
+                for (&i, &weight) in rows.iter().zip(&x) {
+                    mix[i] = weight.max(0.0);
+                }
+                return Some((mix, v));
+            }
+        }
+    }
+    None
+}
+
+fn splitmix(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
+}
+
+/// The root move from the equilibrium of the simultaneous-move game (see `ROOT_MIXED`), or None to keep the max-min move: when
+/// the game has a saddle point (the max-min move is already an equilibrium move), when the result is decided, or when either
+/// side has fewer than two moves.
+pub fn equilibrium_move<const W: usize, const N: usize>(
+    grid: &mut Grid<W, N>,
+    me: &mut AgentState,
+    enemy: &mut AgentState,
+    root_hash: u64,
+    root: &SearchResult,
+    ctx: &mut SearchContext<'_>,
+) -> Option<SearchMove> {
+    let cfg = ctx.cfg;
+    let depth = ctx.root_depth;
+    if ROOT_MIXED == 0 || depth == 0 || is_decided(root.score, cfg) {
+        return None;
+    }
+    let my_moves = get_safe_neighbors(grid, me, enemy);
+    let replies = get_safe_neighbors(grid, enemy, me);
+    if my_moves.count < 2 || replies.count < 2 {
+        return None;
+    }
+    // A mix only beats the max-min move when what the enemy replies matters, and that starts with the two heads being able to meet.
+    let heads_can_meet = my_moves.as_slice().iter().any(|mv| replies.as_slice().iter().any(|r| r.x == mv.x && r.y == mv.y));
+    if !heads_can_meet {
+        return None;
+    }
+    let mut payoff: Vec<Vec<f64>> = Vec::with_capacity(my_moves.count);
+    for &mv in my_moves.as_slice() {
+        let my_ate = grid.food.get(grid.idx(mv.x, mv.y));
+        let mut row = Vec::with_capacity(replies.count);
+        for &reply in replies.as_slice() {
+            let outcome = resolve_turn(grid, me, enemy, mv, reply);
+            let score = match outcome_score(outcome, depth, cfg) {
+                Some(score) => score,
+                None => {
+                    let bonus = eat_bonus(my_ate, grid.food.get(grid.idx(reply.x, reply.y)), depth, cfg);
+                    let (hash, undo) = make_turn(grid, me, enemy, mv, reply, ctx.zobrist, root_hash);
+                    let child = search(
+                        grid,
+                        me,
+                        enemy,
+                        SearchFrame {
+                            depth: depth - 1,
+                            alpha: SCORE_MIN,
+                            beta: SCORE_MAX,
+                            current_hash: hash,
+                            q_depth: 0,
+                        },
+                        ctx,
+                    );
+                    unmake_turn(grid, me, enemy, undo);
+                    apply_bonus(child.score, bonus, cfg)
+                }
+            };
+            row.push(utility(score));
+        }
+        payoff.push(row);
+    }
+    let maxmin = payoff.iter().map(|row| row.iter().copied().fold(f64::INFINITY, f64::min)).fold(f64::NEG_INFINITY, f64::max);
+    let (mix, value) = solve_matrix_game(&payoff)?;
+    if value <= maxmin + 1e-6 {
+        return None;
+    }
+    let moves = my_moves.as_slice();
+    let pick = if ROOT_MIXED == 1 {
+        let u = (splitmix(root_hash) >> 11) as f64 / (1u64 << 53) as f64;
+        let total: f64 = mix.iter().sum();
+        let mut acc = 0.0;
+        let mut chosen = mix.iter().rposition(|&w| w > 0.0)?;
+        for (i, &w) in mix.iter().enumerate() {
+            acc += w / total;
+            if u < acc && w > 0.0 {
+                chosen = i;
+                break;
+            }
+        }
+        chosen
+    } else {
+        (0..mix.len()).max_by(|&i, &j| mix[i].total_cmp(&mix[j]))?
+    };
+    Some(moves[pick])
+}
+
 /// The result of a root search, and the depth it was searched to.
 #[derive(Debug, Clone)]
 pub struct RootSearch {
@@ -884,5 +1072,44 @@ pub fn search<const W: usize, const N: usize>(
         score: best_score,
         mv: Some(best_move),
         children: child_records,
+    }
+}
+
+#[cfg(test)]
+mod equilibrium_tests {
+    use super::solve_matrix_game;
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-9
+    }
+
+    #[test]
+    fn matching_pennies_mixes_evenly() {
+        let (x, v) = solve_matrix_game(&[vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
+        assert!(close(x[0], 0.5) && close(x[1], 0.5) && close(v, 0.5));
+    }
+
+    #[test]
+    fn rock_paper_scissors_mixes_in_thirds() {
+        let (x, v) = solve_matrix_game(&[vec![0.0, -1.0, 1.0], vec![1.0, 0.0, -1.0], vec![-1.0, 1.0, 0.0]]).unwrap();
+        assert!(x.iter().all(|&w| close(w, 1.0 / 3.0)) && close(v, 0.0));
+    }
+
+    #[test]
+    fn no_saddle_point_gives_a_mix_above_maxmin() {
+        let (x, v) = solve_matrix_game(&[vec![3.0, 2.0], vec![1.0, 4.0]]).unwrap();
+        assert!(close(x[0], 0.75) && close(x[1], 0.25) && close(v, 2.5));
+    }
+
+    #[test]
+    fn a_saddle_point_is_found_as_a_pure_move() {
+        let (x, v) = solve_matrix_game(&[vec![3.0, 2.0], vec![1.0, 0.0]]).unwrap();
+        assert!(close(x[0], 1.0) && close(x[1], 0.0) && close(v, 2.0));
+    }
+
+    #[test]
+    fn a_dominated_row_gets_no_weight() {
+        let (x, v) = solve_matrix_game(&[vec![5.0, 1.0, 4.0], vec![2.0, 3.0, 3.0], vec![1.0, 0.0, 0.0]]).unwrap();
+        assert!(close(x[2], 0.0) && v > 2.0);
     }
 }
