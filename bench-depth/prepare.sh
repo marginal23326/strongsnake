@@ -84,7 +84,7 @@ apply_variant() { # dir variant
       for kv in eat=6436 length=1903 urg=50 fint=2553.9771 fthr=36.657 fexp=2.1932; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
-    sym_*|no_food|no_food_dist|no_food_terr|food_terr_*|starve_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food|no_food_dist|no_food_terr|food_terr_*|food_fade_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac

@@ -13,9 +13,10 @@ below removes one of those asymmetries (or, for the control, the term itself), s
   no_food_terr   undo "food in territory": the territory term no longer counts food cells each snake reaches first.
   food_terr_<P>  the food-in-territory term at P percent of its engine weight (one territory cell per food cell is 100):
                  food_terr_200 is two cells, food_terr_50 half a cell. Needs the term to be in the engine.
-  starve_<P>     adds P percent of the old hunger spike (the food curve before the trainer's second result: 2553.9771 *
-                 (36.657 / (buffer + 1)) ^ 2.1932 per step of distance) on top of the flat curve. It is large only when
-                 little health is to spare, so it guards against starving; starve_100 is the whole old spike.
+  food_fade_<LO>_<HI>  the flat pull toward food fades out as the board fills: full below LO percent occupancy (both snakes' lengths
+                 over the board's cells), none at HI percent and above, linear between. Only while health is comfortable (buffer over
+                 40): below that the full pull stays so snakes still eat in time. Data from self-play (harness dump) says that late in
+                 the game, being farther from food than the enemy goes with winning beyond what the score says.
 
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
 import sys
@@ -62,10 +63,13 @@ def apply_text(text, path, variants):
             pairs = [(DIST_OLD, "")]
         elif v == "no_food_terr":
             pairs = [(TERR_OLD, "")]
-        elif v.startswith("starve_") and v[len("starve_"):].isdigit():
-            pct = int(v[len("starve_"):])
-            spike = f"        let spike = if buffer > 0 {{ 2553.9771 * (36.657 / (buffer as f64 + 1.0)).powf(2.1932) }} else {{ 0.0 }} * {pct}.0 / 100.0;\n"
-            pairs = [(FOOD_USE, spike + "        score -= (closest_dist as f64 * (panic_value(&scores.food, buffer) + spike)) as i32;\n")]
+        elif v.startswith("food_fade_") and len(v.split("_")) == 4 and all(p.isdigit() for p in v.split("_")[2:]):
+            lo, hi = (int(p) for p in v.split("_")[2:])
+            fade = (
+                "        let occupancy = (me.body.len() + enemy.body.len()) as f64 * 100.0 / (grid.width * grid.height) as f64;\n"
+                f"        let fade = if buffer > 40 {{ (({hi}.0 - occupancy) / ({hi}.0 - {lo}.0)).clamp(0.0, 1.0) }} else {{ 1.0 }};\n"
+            )
+            pairs = [(FOOD_USE, fade + "        score -= (closest_dist as f64 * panic_value(&scores.food, buffer) * fade) as i32;\n")]
         elif v.startswith("food_terr_") and v[len("food_terr_"):].isdigit():
             pct = int(v[len("food_terr_"):])
             pairs = [(TERR_OLD, f"    score += (voronoi.my_food - voronoi.enemy_food) * unit * {pct} / 100;\n")]
