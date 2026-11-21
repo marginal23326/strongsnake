@@ -13,12 +13,17 @@ below removes one of those asymmetries (or, for the control, the term itself), s
   no_food_terr   undo "food in territory": the territory term no longer counts food cells each snake reaches first.
   food_terr_<P>  the food-in-territory term at P percent of its engine weight (one territory cell per food cell is 100):
                  food_terr_200 is two cells, food_terr_50 half a cell. Needs the term to be in the engine.
+  starve_<P>     adds P percent of the old hunger spike (the food curve before the trainer's second result: 2553.9771 *
+                 (36.657 / (buffer + 1)) ^ 2.1932 per step of distance) on top of the flat curve. It is large only when
+                 little health is to spare, so it guards against starving; starve_100 is the whole old spike.
 
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
 import sys
 
 LEN_OLD = "    let mut score = me.body.len() as i32 * scores.length;\n"
 LEN_NEW = "    let mut score = (me.body.len() as i32 - enemy.body.len() as i32) * scores.length;\n"
+
+FOOD_USE = "        score -= (closest_dist as f64 * panic_value(&scores.food, buffer)) as i32;\n"
 
 DIST_OLD = """        // Path distance around bodies when the Voronoi flood found a food cell, else the straight-line guess.
         let closest_dist = if voronoi.my_food_turn > 0 { voronoi.my_food_turn } else { closest_dist };
@@ -57,6 +62,10 @@ def apply_text(text, path, variants):
             pairs = [(DIST_OLD, "")]
         elif v == "no_food_terr":
             pairs = [(TERR_OLD, "")]
+        elif v.startswith("starve_") and v[len("starve_"):].isdigit():
+            pct = int(v[len("starve_"):])
+            spike = f"        let spike = if buffer > 0 {{ 2553.9771 * (36.657 / (buffer as f64 + 1.0)).powf(2.1932) }} else {{ 0.0 }} * {pct}.0 / 100.0;\n"
+            pairs = [(FOOD_USE, spike + "        score -= (closest_dist as f64 * (panic_value(&scores.food, buffer) + spike)) as i32;\n")]
         elif v.startswith("food_terr_") and v[len("food_terr_"):].isdigit():
             pct = int(v[len("food_terr_"):])
             pairs = [(TERR_OLD, f"    score += (voronoi.my_food - voronoi.enemy_food) * unit * {pct} / 100;\n")]
