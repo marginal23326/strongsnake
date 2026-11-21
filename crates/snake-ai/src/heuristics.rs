@@ -105,7 +105,7 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
     }
 
     score += (voronoi.my_count - voronoi.enemy_count) * unit;
-    score += (voronoi.my_food - voronoi.enemy_food) * unit;
+    score += (voronoi.my_food - voronoi.enemy_food) * unit * 3;
 
     if grid.food.any() {
         let mut closest_dist = i32::MAX;
