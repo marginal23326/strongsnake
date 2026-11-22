@@ -21,6 +21,13 @@ below removes one of those asymmetries (or, for the control, the term itself), s
                  40): below that the full pull stays so snakes still eat in time. Data from self-play (harness dump) says that late in
                  the game, being farther from food than the enemy goes with winning beyond what the score says.
 
+  cramp_<C>_<X>  a nonlinear "room" term. A snake whose Voronoi territory is small for its length is in danger long before
+                 the count says so; self-play data (turns 180+) shows territory / length predicts the result well beyond the
+                 territory difference (held-out AUC 0.66 -> 0.75 after turn 300). Per snake the deficit is
+                 max(0, C/10 - territory / length); the eval adds X territory cells per unit of deficit, the enemy's deficit
+                 minus mine. cramp_10_20: below one cell of territory per body segment, up to 20 cells per unit;
+                 cramp_20_10: below two cells per segment, up to 10 cells per unit. Symmetric, costs nothing measurable.
+
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
 import sys
 
@@ -36,6 +43,7 @@ DIST_OLD = """        // Path distance around bodies when the Voronoi flood foun
 """
 
 TERR_OLD = "    score += (voronoi.my_food - voronoi.enemy_food) * unit * 3;\n"
+COUNT_OLD = "    score += (voronoi.my_count - voronoi.enemy_count) * unit;\n"
 
 FOOD_OLD = """    if grid.food.any() {
         let mut closest_dist = i32::MAX;
@@ -94,6 +102,13 @@ def apply_text(text, path, variants):
                 "    }\n"
             )
             pairs = [(RETURN_SCORE, race + RETURN_SCORE)]
+        elif v.startswith("cramp_") and len(v.split("_")) == 3 and all(p.isdigit() for p in v.split("_")[1:]):
+            c10, x = (int(p) for p in v.split("_")[1:])
+            cramp = (
+                f"    let cramp = |count: i32, len: usize| ({c10}.0 / 10.0 - count as f64 / len as f64).max(0.0);\n"
+                f"    score += ((cramp(voronoi.enemy_count, enemy.body.len()) - cramp(voronoi.my_count, me.body.len())) * {x}.0 * unit as f64) as i32;\n"
+            )
+            pairs = [(COUNT_OLD, COUNT_OLD + cramp)]
         elif v.startswith("food_terr_") and v[len("food_terr_"):].isdigit():
             pct = int(v[len("food_terr_"):])
             pairs = [(TERR_OLD, f"    score += (voronoi.my_food - voronoi.enemy_food) * unit * {pct} / 100;\n")]
