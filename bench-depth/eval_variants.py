@@ -15,6 +15,10 @@ below removes one of those asymmetries (or, for the control, the term itself), s
                  food_terr_300 is the engine, food_terr_200 two cells, food_terr_400 four).
   food_race_<P>  adds a food-race term: how many steps nearer the closest food I am than the enemy (straight-line for both,
                  capped at 6 either way), worth P percent of a territory cell per step. food_race_25 is a quarter cell per step.
+                 Add _c<N> to change the cap: food_race_100_c4 caps the lead at 4 steps (default 6).
+  food_race_vor_<P>   the food race without the second loop over the food: the turns each Voronoi front needs to first reach a
+                 food cell (path distance around bodies; 20 if it never does), capped at 6 steps either way, P percent of a cell
+                 per step. Costs no extra time per node.
   food_race_late_<P>  the same, scaled by how full the board is: full weight once both snakes fill half the board or more.
   food_fade_<LO>_<HI>  the flat pull toward food fades out as the board fills: full below LO percent occupancy (both snakes' lengths
                  over the board's cells), none at HI percent and above, linear between. Only while health is comfortable (buffer over
@@ -27,6 +31,7 @@ below removes one of those asymmetries (or, for the control, the term itself), s
                  Both are for scans on top of the landed term. Symmetric, no measurable cost.
 
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
+import re
 import sys
 
 LEN_OLD = "    let mut score = me.body.len() as i32 * scores.length;\n"
@@ -85,10 +90,23 @@ def apply_text(text, path, variants):
                 f"        let fade = if buffer > 40 {{ (({hi}.0 - occupancy) / ({hi}.0 - {lo}.0)).clamp(0.0, 1.0) }} else {{ 1.0 }};\n"
             )
             pairs = [(FOOD_USE, fade + "        score -= (closest_dist as f64 * panic_value(&scores.food, buffer) * fade) as i32;\n")]
-        elif v.startswith("food_race_") and v.split("_")[-1].isdigit() and (len(v.split("_")) == 3 or (len(v.split("_")) == 4 and v.split("_")[2] == "late")):
+        elif re.fullmatch(r"food_race_vor_\d+", v):
+            pct = int(v.split("_")[-1])
+            race = (
+                "    if grid.food.any() {\n"
+                "        // Food race from the Voronoi flood: turns until each front first reaches a food cell the other has not claimed\n"
+                "        // (0 = never), so no second loop over the food.\n"
+                "        let mine = if voronoi.my_food_turn > 0 { voronoi.my_food_turn } else { 20 };\n"
+                "        let theirs = if voronoi.en_food_turn > 0 { voronoi.en_food_turn } else { 20 };\n"
+                f"        score += ((theirs - mine).clamp(-6, 6) as f64 * unit as f64 * {pct}.0 / 100.0) as i32;\n"
+                "    }\n"
+            )
+            pairs = [(RETURN_SCORE, race + RETURN_SCORE)]
+        elif v.startswith("food_race_") and re.fullmatch(r"food_race_(late_)?\d+(_c\d+)?", v):
             parts = v.split("_")
+            cap = int(parts.pop()[1:]) if parts[-1].startswith("c") else 6
             pct = int(parts[-1])
-            scale = "((me.body.len() + enemy.body.len()) as f64 * 2.0 / (grid.width * grid.height) as f64).min(1.0)" if len(parts) == 4 else "1.0"
+            scale = "((me.body.len() + enemy.body.len()) as f64 * 2.0 / (grid.width * grid.height) as f64).min(1.0)" if parts[2] == "late" else "1.0"
             race = (
                 "    if grid.food.any() {\n"
                 "        // Food race: steps nearer to the closest food than the enemy (straight-line for both).\n"
@@ -99,7 +117,7 @@ def apply_text(text, path, variants):
                 "            my_near = my_near.min(manhattan(my_head, cell));\n"
                 "            en_near = en_near.min(manhattan(enemy_head, cell));\n"
                 "        }\n"
-                "        let race = (en_near - my_near).clamp(-6, 6);\n"
+                f"        let race = (en_near - my_near).clamp(-{cap}, {cap});\n"
                 f"        score += (race as f64 * unit as f64 * {pct}.0 / 100.0 * {scale}) as i32;\n"
                 "    }\n"
             )
