@@ -9,8 +9,8 @@
 #                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now, and the seal verdicts are gone.)
 #                no_food_dist / no_food_terr undo the food-distance and food-in-territory changes; food_terr_<P> sets the
 #                food-in-territory weight to P percent of a territory cell per food cell (100 = the engine's)
-#   cramp_<C>_<X> a nonlinear room term: a snake with less than C/10 cells of Voronoi territory per body segment is penalised,
-#                X territory cells per unit of the shortfall (eval_variants.py); cramp_20_10, cramp_10_20, ...
+#   no_cramp, cramp_scale_<P>, cramp_c_<C>  the room term (a snake with under 1.3 Voronoi cells per body segment is penalised;
+#                it is in the engine): no_cramp removes it, cramp_scale_<P> sets its weight to P percent, cramp_c_<C> its threshold to C/10
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine uses 16)
 #   no_qext      no quiescence extension (the dense-endgame leaf extension in search.rs)
 #   qext_<N>     at most N quiescence extensions per line instead of the engine's value (qext_0 is no_qext)
@@ -86,7 +86,7 @@ apply_variant() { # dir variant
       for kv in eat=6436 length=1903 urg=50 fint=2553.9771 fthr=36.657 fexp=2.1932; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
-    sym_*|no_food|no_food_dist|no_food_terr|food_terr_*|food_race_*|food_fade_*|cramp_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    sym_*|no_food|no_food_dist|no_food_terr|food_terr_*|food_race_*|food_fade_*|no_cramp|cramp_scale_*|cramp_c_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac

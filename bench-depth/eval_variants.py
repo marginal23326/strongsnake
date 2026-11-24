@@ -21,12 +21,10 @@ below removes one of those asymmetries (or, for the control, the term itself), s
                  40): below that the full pull stays so snakes still eat in time. Data from self-play (harness dump) says that late in
                  the game, being farther from food than the enemy goes with winning beyond what the score says.
 
-  cramp_<C>_<X>  a nonlinear "room" term. A snake whose Voronoi territory is small for its length is in danger long before
-                 the count says so; self-play data (turns 180+) shows territory / length predicts the result well beyond the
-                 territory difference (held-out AUC 0.66 -> 0.75 after turn 300). Per snake the deficit is
-                 max(0, C/10 - territory / length); the eval adds X territory cells per unit of deficit, the enemy's deficit
-                 minus mine. cramp_10_20: below one cell of territory per body segment, up to 20 cells per unit;
-                 cramp_20_10: below two cells per segment, up to 10 cells per unit. Symmetric, costs nothing measurable.
+  no_cramp       the room term is removed (undoes the cramp commit; arena: it is worth about +20 Elo).
+  cramp_scale_<P>  the room term's weight at P percent of the engine's (cramp_scale_50 half, cramp_scale_200 double).
+  cramp_c_<C>    the room term's threshold set to C/10 cells of territory per body segment (cramp_c_12 is 1.2; the engine uses 1.3).
+                 Both are for scans on top of the landed term. Symmetric, no measurable cost.
 
 Every replacement fails loudly if the text it expects is not in the file (the eval moved on)."""
 import sys
@@ -43,7 +41,11 @@ DIST_OLD = """        // Path distance around bodies when the Voronoi flood foun
 """
 
 TERR_OLD = "    score += (voronoi.my_food - voronoi.enemy_food) * unit * 3;\n"
-COUNT_OLD = "    score += (voronoi.my_count - voronoi.enemy_count) * unit;\n"
+CRAMP_THRESH_OLD = "const CRAMP_THRESHOLD: f64 = 1.3;\n"
+CRAMP_WEIGHT_OLD = "* CRAMP_WEIGHT * unit as f64)"
+CRAMP_USE = """    let cramp = |count: i32, len: usize| (CRAMP_THRESHOLD - count as f64 / len as f64).max(0.0);
+    score += ((cramp(voronoi.enemy_count, enemy.body.len()) - cramp(voronoi.my_count, me.body.len())) * CRAMP_WEIGHT * unit as f64) as i32;
+"""
 
 FOOD_OLD = """    if grid.food.any() {
         let mut closest_dist = i32::MAX;
@@ -102,13 +104,12 @@ def apply_text(text, path, variants):
                 "    }\n"
             )
             pairs = [(RETURN_SCORE, race + RETURN_SCORE)]
-        elif v.startswith("cramp_") and len(v.split("_")) == 3 and all(p.isdigit() for p in v.split("_")[1:]):
-            c10, x = (int(p) for p in v.split("_")[1:])
-            cramp = (
-                f"    let cramp = |count: i32, len: usize| ({c10}.0 / 10.0 - count as f64 / len as f64).max(0.0);\n"
-                f"    score += ((cramp(voronoi.enemy_count, enemy.body.len()) - cramp(voronoi.my_count, me.body.len())) * {x}.0 * unit as f64) as i32;\n"
-            )
-            pairs = [(COUNT_OLD, COUNT_OLD + cramp)]
+        elif v == "no_cramp":
+            pairs = [(CRAMP_USE, "")]
+        elif v.startswith("cramp_scale_") and v[len("cramp_scale_"):].isdigit():
+            pairs = [(CRAMP_WEIGHT_OLD, f"* CRAMP_WEIGHT * {int(v[len('cramp_scale_'):])}.0 / 100.0 * unit as f64)")]
+        elif v.startswith("cramp_c_") and v[len("cramp_c_"):].isdigit():
+            pairs = [(CRAMP_THRESH_OLD, f"const CRAMP_THRESHOLD: f64 = {int(v[len('cramp_c_'):])}.0 / 10.0;\n")]
         elif v.startswith("food_terr_") and v[len("food_terr_"):].isdigit():
             pct = int(v[len("food_terr_"):])
             pairs = [(TERR_OLD, f"    score += (voronoi.my_food - voronoi.enemy_food) * unit * {pct} / 100;\n")]

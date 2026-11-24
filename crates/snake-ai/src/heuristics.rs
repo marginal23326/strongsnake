@@ -6,6 +6,10 @@ use crate::{config::{AiConfig, FoodCurveConfig}, grid::Grid, model::AgentState, 
 
 /// Both snakes must be at least this long for a position to count as a dense tail race.
 const DENSE_MIN_LEN: usize = 16;
+/// Room term: a snake with less than this many Voronoi cells per body segment is cramped; found through self-play data.
+const CRAMP_THRESHOLD: f64 = 1.3;
+/// Territory cells per unit of shortfall below `CRAMP_THRESHOLD`.
+const CRAMP_WEIGHT: f64 = 100.0;
 
 #[inline(always)]
 fn manhattan(a: Point, b: Point) -> i32 {
@@ -105,6 +109,8 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
     }
 
     score += (voronoi.my_count - voronoi.enemy_count) * unit;
+    let cramp = |count: i32, len: usize| (CRAMP_THRESHOLD - count as f64 / len as f64).max(0.0);
+    score += ((cramp(voronoi.enemy_count, enemy.body.len()) - cramp(voronoi.my_count, me.body.len())) * CRAMP_WEIGHT * unit as f64) as i32;
     score += (voronoi.my_food - voronoi.enemy_food) * unit * 3;
 
     if grid.food.any() {
