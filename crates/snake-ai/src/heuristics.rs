@@ -11,6 +11,10 @@ const CRAMP_THRESHOLD: f64 = 1.3;
 /// Territory cells per unit of shortfall below `CRAMP_THRESHOLD`.
 const CRAMP_WEIGHT: f64 = 100.0;
 
+/// Most turns of lead the food race counts either way, and the turn count standing for a flood that never reaches food.
+const FOOD_RACE_CAP: i32 = 6;
+const FOOD_RACE_NEVER: i32 = 20;
+
 #[inline(always)]
 fn manhattan(a: Point, b: Point) -> i32 {
     (a.x - b.x).abs() + (a.y - b.y).abs()
@@ -128,6 +132,11 @@ fn evaluate_inner<const W: usize, const N: usize>(grid: &mut Grid<W, N>, me: &Ag
         let closest_dist = if voronoi.my_food_turn > 0 { voronoi.my_food_turn } else { closest_dist };
         let buffer = me.health - closest_dist;
         score -= (closest_dist as f64 * panic_value(&scores.food, buffer)) as i32;
+
+        // Food race: each turn sooner than the enemy my flood first reaches a food cell is worth a territory cell.
+        let mine = if voronoi.my_food_turn > 0 { voronoi.my_food_turn } else { FOOD_RACE_NEVER };
+        let theirs = if voronoi.en_food_turn > 0 { voronoi.en_food_turn } else { FOOD_RACE_NEVER };
+        score += (theirs - mine).clamp(-FOOD_RACE_CAP, FOOD_RACE_CAP) * unit;
     }
 
     score
