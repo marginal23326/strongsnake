@@ -673,7 +673,7 @@ pub fn search_root<const W: usize, const N: usize>(
         if depth >= max_depth || forced_win {
             return RootSearch { result, depth };
         }
-        depth += 1;
+        depth = if depth + 2 == max_depth { max_depth } else { depth + 1 };
     }
 }
 
