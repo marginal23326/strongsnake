@@ -4,11 +4,9 @@
 #
 #   none         the engine as it is (it already has sym_tail, vor_len, vor_time, vor_eat and the head/tail Zobrist keys)
 #   no_hopeful   the hopeful-move step (prefer_hopeful_move) never changes the move
-#   sym_len, no_food, no_food_dist, no_food_terr, food_terr_<P>, food_race_<P>, food_race_vor_<P>, food_race_late_<P>
-#                eval variants (bench-depth/eval_variants.py explains each): two make a one-sided term symmetric, the
-#                no_* ones drop a term. (sym_tail, vor_len, vor_time and vor_eat are in the engine now, and the seal verdicts are gone.)
-#                no_food_dist / no_food_terr undo the food-distance and food-in-territory changes; food_terr_<P> sets the
-#                food-in-territory weight to P percent of a territory cell per food cell (100 = the engine's)
+#   food_fade_<LO>_<HI>
+#                eval variant (bench-depth/eval_variants.py explains it): fades the food pull as the board fills. (sym_len,
+#                sym_tail, vor_len, vor_time and vor_eat are settled or in the engine now, and the seal verdicts are gone.)
 #   no_cramp, cramp_scale_<P>, cramp_c_<C>  the room term (a snake with under 1.3 Voronoi cells per body segment is penalised;
 #                it is in the engine): no_cramp removes it, cramp_scale_<P> sets its weight to P percent, cramp_c_<C> its threshold to C/10
 #   vor_time_<N> the Voronoi expansion frees body segments for the first N turns only (the engine uses 16)
@@ -24,10 +22,7 @@
 #   rev_<sha>    the engine (snake-ai, snake-domain) of that commit, e.g. rev_2bf6527; first in a combination. Needs full git
 #                history. Use it for `cand` only: the harness plays the games with `base`'s rules (start rules etc.), which
 #                an older commit does not have. The harness is built without the asym diagnostic when one is used.
-#   small_tt, skip_iter, lmr_mild   search variants (bench-depth/search_variants.py explains each): a smaller transposition
-#                table (speed only), no iteration just before the last one, mild late-move reductions
-#   terr_grad_<E>_<H>, food_grad_<E>_<H>   graded Voronoi (bench-depth/voronoi_variants.py): cells (or food cells) a snake reaches
-#                sooner count more, E quarter-cells extra next to the head fading out over H turns; E = 0 is the engine
+#   lmr_mild     mild late-move reductions (bench-depth/search_variants.py explains it)
 #   patch        bench-depth/candidate.patch applied (a diff against the repo root; the file is not shipped)
 #
 # Variants combine with `+`: `qext_5+no_hopeful` is the extension cap 5 with the hopeful-move step off.
@@ -88,9 +83,8 @@ apply_variant() { # dir variant
       for kv in eat=6436 length=1903 urg=50 fint=2553.9771 fthr=36.657 fexp=2.1932; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
-    sym_*|no_food|no_food_dist|no_food_terr|food_terr_*|food_race_*|food_fade_*|no_cramp|cramp_scale_*|cramp_c_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
-    terr_grad_*|food_grad_*) python3 voronoi_variants.py "$d/crates/snake-ai/src" "$2" ;;
-    small_tt|skip_iter|lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
+    food_fade_*|no_cramp|cramp_scale_*|cramp_c_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
 }

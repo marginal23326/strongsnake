@@ -3,11 +3,6 @@
 
     search_variants.py <crates/snake-ai/src> <variant>
 
-  small_tt    transposition table of 2^16 entries at depth 5-6 and 2^18 at depth 7-10 (the engine has 2^19 and 2^21). The
-              smaller table stays in cache: about 4-10% less time per move for 0.5-1.5% more nodes (collisions), and the
-              same root move in every position measured, so the gain is time only.
-  skip_iter   iterative deepening skips the iteration just before the last one (depths 1..max-2, then max). Fewer nodes,
-              a little less ordering information for the last iteration: it changes play.
   lmr_mild    late-move reductions: at depth >= 4, not at the root, a move after the first two (one that does not eat and
               does not land next to the enemy head) is probed one turn short with a zero window and dropped if the probe
               fails low, otherwise searched as before. About 0.94x nodes, root move differs in about 2.7% of positions.
@@ -15,23 +10,6 @@
 Every replacement fails loudly if the text it expects is not in the file (the engine moved on)."""
 import os
 import sys
-
-TT_EDITS = ("brain.rs", [
-    ("5..=6 => 1 << 19,   // 512k entries (~32MB)", "5..=6 => 1 << 16,   // 64k entries (~4MB)"),
-    ("7..=10 => 1 << 21,  // 2M entries (~128MB)", "7..=10 => 1 << 18,  // 256k entries (~16MB)"),
-])
-
-SKIP_EDITS = ("search.rs", [
-    ("""        depth += 1;
-    }
-}
-
-pub fn search<""", """        depth = if depth + 2 == max_depth { max_depth } else { depth + 1 };
-    }
-}
-
-pub fn search<"""),
-])
 
 LMR_EDITS = ("search.rs", [
     ("const PV_MAX_TURNS: usize = 32;\n", """const PV_MAX_TURNS: usize = 32;
@@ -80,7 +58,7 @@ const LMR_REDUCTION: usize = 1;
         };"""),
 ])
 
-VARIANTS = {"small_tt": TT_EDITS, "skip_iter": SKIP_EDITS, "lmr_mild": LMR_EDITS}
+VARIANTS = {"lmr_mild": LMR_EDITS}
 
 
 def apply(src_dir, variant):
