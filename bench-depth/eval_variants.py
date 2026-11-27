@@ -10,6 +10,11 @@ Each variant below rewrites one piece of the eval in crates/snake-ai/src/heurist
                  40): below that the full pull stays so snakes still eat in time. Data from self-play (harness dump) says that late in
                  the game, being farther from food than the enemy goes with winning beyond what the score says.
 
+  en_pull_<P>    the enemy gets the same food term as I do, with its sign flipped, at P percent: a hungry enemy far from food is
+                 good for me (distance = its flood's first food turn, else straight-line to the nearest food; its own health buffer
+                 sets the panic curve). The engine has the term for my snake only. Symmetric in what it counts, but it changes play:
+                 the search will steer to keep the enemy away from food. One extra food scan when its flood found none.
+
   no_cramp       the room term is removed (undoes the cramp commit; arena: it is worth about +20 Elo).
   cramp_scale_<P>  the room term's weight at P percent of the engine's (cramp_scale_50 half, cramp_scale_200 double).
   cramp_c_<C>    the room term's threshold set to C/10 cells of territory per body segment (cramp_c_12 is 1.2; the engine uses 1.3).
@@ -27,6 +32,26 @@ CRAMP_USE = """    let cramp = |count: i32, len: usize| (CRAMP_THRESHOLD - count
     score += ((cramp(voronoi.enemy_count, enemy.body.len()) - cramp(voronoi.my_count, me.body.len())) * CRAMP_WEIGHT * unit as f64) as i32;
 """
 
+FOOD_RACE_ANCHOR = "        // Food race: each turn sooner than the enemy my flood first reaches a food cell is worth a territory cell.\n"
+
+EN_PULL = """        // Enemy food pull (variant): the mirror of the term above, from the enemy's side.
+        let en_dist = if voronoi.en_food_turn > 0 {{
+            voronoi.en_food_turn
+        }} else {{
+            let mut best = i32::MAX;
+            let mut food = grid.food;
+            while let Some(idx) = food.pop_first() {{
+                let cell = Point {{ x: (idx as i32) % grid.width, y: (idx as i32) / grid.width }};
+                best = best.min(manhattan(enemy_head, cell));
+            }}
+            best
+        }};
+        let en_buffer = enemy.health - en_dist;
+        score += (en_dist as f64 * panic_value(&scores.food, en_buffer) * {p}.0 / 100.0) as i32;
+
+"""
+
+
 def apply(path, variant):
     text = open(path).read()
     open(path, "w").write(apply_text(text, path, [variant]))
@@ -41,6 +66,8 @@ def apply_text(text, path, variants):
                 f"        let fade = if buffer > 40 {{ (({hi}.0 - occupancy) / ({hi}.0 - {lo}.0)).clamp(0.0, 1.0) }} else {{ 1.0 }};\n"
             )
             pairs = [(FOOD_USE, fade + "        score -= (closest_dist as f64 * panic_value(&scores.food, buffer) * fade) as i32;\n")]
+        elif v.startswith("en_pull_") and v[len("en_pull_"):].isdigit():
+            pairs = [(FOOD_RACE_ANCHOR, EN_PULL.format(p=int(v[len("en_pull_"):])) + FOOD_RACE_ANCHOR)]
         elif v == "no_cramp":
             pairs = [(CRAMP_USE, "")]
         elif v.startswith("cramp_scale_") and v[len("cramp_scale_"):].isdigit():
