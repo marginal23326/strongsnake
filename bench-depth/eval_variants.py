@@ -17,6 +17,8 @@ Each variant below rewrites one piece of the eval in crates/snake-ai/src/heurist
 
   no_cramp       the room term is removed (undoes the cramp commit; arena: it is worth about +20 Elo).
   cramp_scale_<P>  the room term's weight at P percent of the engine's (cramp_scale_50 half, cramp_scale_200 double).
+  cramp_sq_<P>   the room term's shortfall s counts as s + s*s*P/100 (convex: a snake with far too little room is punished more than
+                 one slightly short). Self-play data: the fitted penalty for very cramped snakes is well above the engine's.
   cramp_c_<C>    the room term's threshold set to C/10 cells of territory per body segment (cramp_c_12 is 1.2; the engine uses 1.3).
                  Both are for scans on top of the landed term. Symmetric, no measurable cost.
 
@@ -27,6 +29,7 @@ import sys
 FOOD_USE = "        score -= (closest_dist as f64 * panic_value(&scores.food, buffer)) as i32;\n"
 
 CRAMP_THRESH_OLD = "const CRAMP_THRESHOLD: f64 = 1.3;\n"
+CRAMP_CLOSURE = "    let cramp = |count: i32, len: usize| (CRAMP_THRESHOLD - count as f64 / len as f64).max(0.0);\n"
 CRAMP_WEIGHT_OLD = "* CRAMP_WEIGHT * unit as f64)"
 CRAMP_USE = """    let cramp = |count: i32, len: usize| (CRAMP_THRESHOLD - count as f64 / len as f64).max(0.0);
     score += ((cramp(voronoi.enemy_count, enemy.body.len()) - cramp(voronoi.my_count, me.body.len())) * CRAMP_WEIGHT * unit as f64) as i32;
@@ -68,6 +71,11 @@ def apply_text(text, path, variants):
             pairs = [(FOOD_USE, fade + "        score -= (closest_dist as f64 * panic_value(&scores.food, buffer) * fade) as i32;\n")]
         elif v.startswith("en_pull_") and v[len("en_pull_"):].isdigit():
             pairs = [(FOOD_RACE_ANCHOR, EN_PULL.format(p=int(v[len("en_pull_"):])) + FOOD_RACE_ANCHOR)]
+        elif v.startswith("cramp_sq_") and v[len("cramp_sq_"):].isdigit():
+            # shortfall s becomes s + s*s*P/100: the very cramped are punished more than the slightly cramped
+            q = int(v[len("cramp_sq_"):])
+            pairs = [(CRAMP_CLOSURE, CRAMP_CLOSURE.replace("let cramp =", "let cramp0 =") +
+                      f"    let cramp = |count: i32, len: usize| {{ let s = cramp0(count, len); s + s * s * {q}.0 / 100.0 }};\n")]
         elif v == "no_cramp":
             pairs = [(CRAMP_USE, "")]
         elif v.startswith("cramp_scale_") and v[len("cramp_scale_"):].isdigit():
