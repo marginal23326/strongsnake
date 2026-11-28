@@ -17,6 +17,10 @@ Each variant below rewrites one piece of the eval in crates/snake-ai/src/heurist
 
   no_cramp       the room term is removed (undoes the cramp commit; arena: it is worth about +20 Elo).
   cramp_scale_<P>  the room term's weight at P percent of the engine's (cramp_scale_50 half, cramp_scale_200 double).
+  en_len_<P>     the enemy's length counts against me at P percent of what mine counts for me (the engine counts only mine). With en_pull
+                 the enemy eating pushes its next food farther away, which en_pull reads as good for me and nothing in the eval charges
+                 for the enemy's growth; this charges it. (sym_len, tried before without en_pull, was a draw.) Bench it on top of
+                 en_pull: CAND=en_pull_100+en_len_100 BASE=en_pull_100.
   cramp_sq_<P>   the room term's shortfall s counts as s + s*s*P/100 (convex: a snake with far too little room is punished more than
                  one slightly short). Self-play data: the fitted penalty for very cramped snakes is well above the engine's.
   cramp_c_<C>    the room term's threshold set to C/10 cells of territory per body segment (cramp_c_12 is 1.2; the engine uses 1.3).
@@ -35,6 +39,7 @@ CRAMP_USE = """    let cramp = |count: i32, len: usize| (CRAMP_THRESHOLD - count
     score += ((cramp(voronoi.enemy_count, enemy.body.len()) - cramp(voronoi.my_count, me.body.len())) * CRAMP_WEIGHT * unit as f64) as i32;
 """
 
+LENGTH_OLD = "    let mut score = me.body.len() as i32 * scores.length;\n"
 FOOD_RACE_ANCHOR = "        // Food race: each turn sooner than the enemy my flood first reaches a food cell is worth a territory cell.\n"
 
 EN_PULL = """        // Enemy food pull (variant): the mirror of the term above, from the enemy's side.
@@ -76,6 +81,9 @@ def apply_text(text, path, variants):
             q = int(v[len("cramp_sq_"):])
             pairs = [(CRAMP_CLOSURE, CRAMP_CLOSURE.replace("let cramp =", "let cramp0 =") +
                       f"    let cramp = |count: i32, len: usize| {{ let s = cramp0(count, len); s + s * s * {q}.0 / 100.0 }};\n")]
+        elif v.startswith("en_len_") and v[len("en_len_"):].isdigit():
+            q = int(v[len("en_len_"):])
+            pairs = [(LENGTH_OLD, f"    let mut score = ((me.body.len() as f64 - enemy.body.len() as f64 * {q}.0 / 100.0) * scores.length as f64) as i32;\n")]
         elif v == "no_cramp":
             pairs = [(CRAMP_USE, "")]
         elif v.startswith("cramp_scale_") and v[len("cramp_scale_"):].isdigit():

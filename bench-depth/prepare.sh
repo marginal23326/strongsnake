@@ -8,6 +8,7 @@
 #                eval variant (bench-depth/eval_variants.py explains it): fades the food pull as the board fills. (sym_len,
 #                sym_tail, vor_len, vor_time and vor_eat are settled or in the engine now, and the seal verdicts are gone.)
 #   en_pull_<P>  the enemy gets the engine's food term mirrored (a hungry enemy far from food is good for me), at P percent; changes play
+#   en_len_<P>   the enemy's length counts against me at P percent (the engine counts only mine); changes play
 #   cramp_sq_<P> the room term's shortfall s counts as s + s*s*P/100 (convex); changes play
 #   no_cramp, cramp_scale_<P>, cramp_c_<C>  the room term (a snake with under 1.3 Voronoi cells per body segment is penalised;
 #                it is in the engine): no_cramp removes it, cramp_scale_<P> sets its weight to P percent, cramp_c_<C> its threshold to C/10
@@ -85,7 +86,7 @@ apply_variant() { # dir variant
       for kv in eat=6436 length=1903 urg=50 fint=2553.9771 fthr=36.657 fexp=2.1932; do
         python3 weight_variants.py "$d/crates/snake-ai/src/config.rs" "${kv%%=*}" "${kv#*=}" set
       done ;;
-    food_fade_*|en_pull_*|no_cramp|cramp_scale_*|cramp_c_*|cramp_sq_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
+    food_fade_*|en_pull_*|en_len_*|no_cramp|cramp_scale_*|cramp_c_*|cramp_sq_*) python3 eval_variants.py "$d/crates/snake-ai/src/heuristics.rs" "$2" ;;
     lmr_mild) python3 search_variants.py "$d/crates/snake-ai/src" "$2" ;;
     *) echo "unknown variant: $2" >&2; exit 1 ;;
   esac
